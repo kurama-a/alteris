@@ -1,0 +1,116 @@
+version: "3.9"
+
+services:
+  # === MongoDB pour SmartPay ===
+  mongo_smartpay:
+    image: mongo:7
+    container_name: mongo_smartpay
+    ports:
+      - "27017:27017"   # garde ce port pour SmartPay
+
+  # === MongoDB pour Alternance ===
+  mongo_alternance:
+    image: mongo:7
+    container_name: mongo_alternance
+    ports:
+      - "27018:27017"   # nouveau port pour alternance
+
+  # === Microservice Apprenti ===
+  apprenti:
+    build:
+      context: .
+      dockerfile: ./apprenti/Dockerfile
+    environment:
+      - APP_PORT=8001
+      - MONGO_URI=mongodb://mongo_alternance:27017   # connecte à mongo alternance
+      - MONGO_DB=alternance_db
+    volumes:
+      - ./apprenti:/app/apprenti
+      - ./common:/app/common
+    ports:
+      - "8001:8001"
+    depends_on:
+      - mongo_alternance
+
+  # === Microservice Maître ===
+  maitre:
+    build:
+      context: .
+      dockerfile: ./maitre/Dockerfile
+    environment:
+      - APP_PORT=8002
+      - MONGO_URI=mongodb://mongo_alternance:27017
+      - MONGO_DB=alternance_db
+    volumes:
+      - ./maitre:/app/maitre
+      - ./common:/app/common
+    ports:
+      - "8002:8002"
+    depends_on:
+      - mongo_alternance
+
+  # === Microservice Tuteur ===
+  tuteur:
+    build:
+      context: .
+      dockerfile: ./tuteur/Dockerfile
+    environment:
+      - APP_PORT=8003
+      - MONGO_URI=mongodb://mongo_alternance:27017
+      - MONGO_DB=alternance_db
+    volumes:
+      - ./tuteur:/app/tuteur
+      - ./common:/app/common
+    ports:
+      - "8003:8003"
+    depends_on:
+      - mongo_alternance
+
+  # === Microservice Coordonatrice ===
+  coordonatrice:
+    build:
+      context: .
+      dockerfile: ./coordonatrice/Dockerfile
+    environment:
+      - APP_PORT=8004
+      - MONGO_URI=mongodb://mongo_alternance:27017
+      - MONGO_DB=alternance_db
+    volumes:
+      - ./coordonatrice:/app/coordonatrice
+      - ./common:/app/common
+    ports:
+      - "8004:8004"
+    depends_on:
+      - mongo_alternance
+
+  # === Microservice Auth ===
+  auth:
+    build:
+      context: .
+      dockerfile: ./auth/Dockerfile
+    environment:
+      - APP_PORT=8005
+      - MONGO_URI=mongodb://mongo_alternance:27017
+      - MONGO_DB=alternance_db
+      - SECRET_KEY=changeme123
+    volumes:
+      - ./auth:/app/auth
+      - ./common:/app/common
+    ports:
+      - "8005:8005"
+    depends_on:
+      - mongo_alternance
+
+  # === Nginx Gateway ===
+  gateway:
+    image: nginx:latest
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    ports:
+      - "80:80"
+    depends_on:
+      - apprenti
+      - maitre
+      - tuteur
+      - coordonatrice
+      - auth

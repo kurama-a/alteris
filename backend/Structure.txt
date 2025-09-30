@@ -1,0 +1,34 @@
+backend/
+├── common/
+│   ├── config.py
+│   └── db.py
+├── apprenti/
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── main.py
+│   ├── routes.py
+│   ├── models.py
+│   └── service.py
+├── maitre/
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── main.py
+│   ├── routes.py
+│   ├── models.py
+│   └── service.py
+├── tuteur/
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── main.py
+│   ├── routes.py
+│   ├── models.py
+│   └── service.py
+├── coordonatrice/
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── main.py
+│   ├── routes.py
+│   ├── models.py
+│   └── service.py
+├── docker-compose.yml
+└── nginx.conf
