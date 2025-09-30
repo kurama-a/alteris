@@ -1,0 +1,17 @@
+
+À exécuter une seule fois, s’il n’a pas encore récupéré les branches :
+
+git fetch origin
+
+
+
+git checkout backend                 # se placer sur la branche backend
+git checkout backend-chahery         # se placer sur ta branche
+git checkout backend-abdoul          # se placer sur ta branche
+git checkout backend-corentin        # se placer sur ta branche
+
+git add .                            # ajouter les fichiers modifiés
+git commit -m "Ajout de ma fonction" # enregistrer les changements
+git push                             # envoyer sur GitHub
+
+
