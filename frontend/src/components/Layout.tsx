@@ -1,29 +1,57 @@
 import React from "react";
-import { Link, Outlet } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import { useMe, useCan } from "../auth/Permissions";
+import "../styles/Layout.css";
 
-export default function Layout(){
+export default function Layout() {
   const me = useMe();
   const canAdmin = useCan("user:manage");
+  const location = useLocation();
+
+  const links = [
+    { to: "/accueil", label: "Accueil" },
+    { to: "/journal", label: "Journal" },
+    { to: "/documents", label: "Documents" },
+    { to: "/entretiens", label: "Entretiens" },
+    { to: "/juries", label: "Juries" },
+    ...(canAdmin ? [{ to: "/admin", label: "Admin" }] : []),
+    { to: "/profil", label: "Profil" },
+    { to: "/notifications", label: "Notifications" },
+    { to: "/help", label: "Aide" },
+  ];
+
   return (
-    <div style={{display:"grid",gridTemplateColumns:"220px 1fr",minHeight:"100vh"}}>
-      <aside style={{padding:16,borderRight:"1px solid #ddd"}}>
-        <h3>SIGL</h3>
-        <nav style={{display:"grid",gap:8}}>
-          <Link to="/accueil">Accueil</Link>
-          <Link to="/journal">Journal</Link>
-          <Link to="/documents">Documents</Link>
-          <Link to="/entretiens">Entretiens</Link>
-          <Link to="/juries">Juries</Link>
-          {canAdmin && <Link to="/admin">Admin</Link>}
-          <Link to="/profil">Profil</Link>
-          <Link to="/notifications">Notifications</Link>
-          <Link to="/recherche">Recherche</Link>
-          <Link to="/help">Aide</Link>
+    <div className="layout-container">
+      {/* Barre de navigation */}
+      <header className="navbar">
+        <div className="navbar-left">
+            <a href="/accueil">
+                <img src="/alteris_logo.png" alt="Alteris Logo" className="navbar-logo" />
+            </a>          
+        </div>
+
+        <nav className="navbar-center">
+          {links.map((link) => (
+            <Link
+              key={link.to}
+              to={link.to}
+              className={`nav-link ${
+                location.pathname === link.to ? "active" : ""
+              }`}
+            >
+              {link.label}
+            </Link>
+          ))}
         </nav>
-        <div style={{marginTop:16, fontSize:12}}>Utilisateur: {me.id}</div>
-      </aside>
-      <main style={{padding:24}}>
+
+        <div className="navbar-right">
+          <div className="user-id">{me.id}</div>
+          <div className="user-role">{me.roles?.[0]?.toUpperCase()}</div>
+        </div>
+      </header>
+
+      {/* Contenu principal */}
+      <main className="main-content">
         <Outlet />
       </main>
     </div>
