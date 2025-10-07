@@ -1,35 +1,48 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import React from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
+import Layout from "./components/Layout";
+import Require from "./components/Require";
 
-function App() {
-  const [count, setCount] = useState(0)
+// pages
+import Login from "./pages/Login";
+import Accueil from "./pages/Accueil";
+import Journal from "./pages/Journal";
+import Documents from "./pages/Documents";
+import Entretiens from "./pages/Entretiens";
+import Juries from "./pages/Juries";
+import Admin from "./pages/Admin";
+import Profile from "./pages/Profile";
+import Notifications from "./pages/Notifications";
+import Recherche from "./pages/Recherche";
+import Aide from "./pages/Aide";
 
+export default function App(){
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <Routes>
+      <Route path="/login" element={<Login/>} />
+      <Route element={<Layout/>}>
+        <Route index element={<Navigate to="/accueil" replace />} />
+        <Route path="/accueil" element={<Accueil/>} />
+        <Route path="/journal" element={
+          <Require perm="journal:read:own"><Journal/></Require>
+        }/>
+        <Route path="/documents" element={
+          <Require perm="doc:read"><Documents/></Require>
+        }/>
+        <Route path="/entretiens" element={
+          <Require perm="meeting:schedule:own"><Entretiens/></Require>
+        }/>
+        <Route path="/juries" element={
+          <Require perm="jury:read"><Juries/></Require>
+        }/>
+        <Route path="/admin" element={
+          <Require perm="user:manage"><Admin/></Require>
+        }/>
+        <Route path="/profil" element={<Profile/>}/>
+        <Route path="/notifications" element={<Notifications/>}/>
+        <Route path="/recherche" element={<Recherche/>}/>
+        <Route path="/help" element={<Aide/>}/>
+      </Route>
+    </Routes>
+  );
 }
-
-export default App

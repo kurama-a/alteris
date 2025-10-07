@@ -1,10 +1,18 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.tsx'
+// src/main.tsx
+import React from "react";
+import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import App from "./App";
+import { PermissionsProvider } from "./auth/Permissions";
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <PermissionsProvider me={{ id:"demo", roles:["AP"], perms:[
+        "journal:read:own","journal:create:own","doc:read","doc:create","meeting:schedule:own","jury:read"
+      ]}}>
+        <App />
+      </PermissionsProvider>
+    </BrowserRouter>
+  </React.StrictMode>
+);
