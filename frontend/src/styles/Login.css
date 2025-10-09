@@ -1,0 +1,66 @@
+/* --- Page entière --- */
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background-color: #ffffff; /* fond blanc propre */
+  font-family: "Inter", "Roboto", sans-serif;
+}
+
+/* --- Conteneur de la box --- */
+.login-box {
+  background-color: #f8f9fa; /* gris très clair */
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  padding: 40px 50px;
+  text-align: center;
+  width: 100%;
+  max-width: 380px;
+}
+
+/* --- Titre --- */
+.login-title {
+  font-size: 24px;
+  margin-bottom: 24px;
+  color: #333;
+}
+
+/* --- Formulaire --- */
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.login-form input {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-size: 15px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.login-form input:focus {
+  border-color: #007bff; /* bleu Alteris */
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.12);
+  outline: none;
+}
+
+/* --- Bouton --- */
+.login-form button {
+  background-color: #007bff; /* bleu Alteris */
+  color: #fff;
+  font-weight: 600;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.2s ease;
+}
+
+.login-form button:hover {
+  background-color: #0069d9; /* bleu plus foncé au survol */
+}

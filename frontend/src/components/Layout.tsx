@@ -45,8 +45,8 @@ export default function Layout() {
         </nav>
 
         <div className="navbar-right">
-          <div className="user-id">{me.id}</div>
-          <div className="user-role">{me.roles?.[0]?.toUpperCase()}</div>
+          <div className="user-id">ID : {me.id}</div>
+          <div className="user-role">Role : {me.roles?.[0]?.toUpperCase()}</div>
         </div>
       </header>
 

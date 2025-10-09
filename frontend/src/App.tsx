@@ -11,7 +11,7 @@ import Documents from "./pages/Documents";
 import Entretiens from "./pages/Entretiens";
 import Juries from "./pages/Juries";
 import Admin from "./pages/Admin";
-import Profile from "./pages/Profile";
+import Profil from "./pages/Profil";
 import Notifications from "./pages/Notifications";
 import Recherche from "./pages/Recherche";
 import Aide from "./pages/Aide";
@@ -38,7 +38,7 @@ export default function App(){
         <Route path="/admin" element={
           <Require perm="user:manage"><Admin/></Require>
         }/>
-        <Route path="/profil" element={<Profile/>}/>
+        <Route path="/profil" element={<Profil/>}/>
         <Route path="/notifications" element={<Notifications/>}/>
         <Route path="/recherche" element={<Recherche/>}/>
         <Route path="/help" element={<Aide/>}/>
