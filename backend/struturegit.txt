@@ -61,7 +61,7 @@ http://localhost:8005/auth/docs
 3-Si vous aviez un message d'erreur c'est normale veillez regarder dans le termianle et reegarder le bon port surlequel tourne l'api démarrer en local sur votre machine
 
 4-Si vous souhaitez démarrer tous les microservices veillez ouvire plusieur terminale et lancer a chaque fois :
-uvicorn anommicrosservice.main:app --reload
+uvicorn nom-microsservice.main:app --reload
 
 ################################################################################################
 
