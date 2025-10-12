@@ -14,3 +14,20 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+
+class EmailRequest(BaseModel):
+    nom: str
+    prenom: str
+    profil: str
+
+
+class PasswordRecoveryRequest(BaseModel):
+    email: str
+    profil: str
+
+ 
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+    profil: str
