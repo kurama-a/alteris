@@ -2,4 +2,4 @@
 .DS_Store
 # Python cache
 __pycache__/
-*.pyc
+*.pycgit add .DS_Store backend/admin/service.py

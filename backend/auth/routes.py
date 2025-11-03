@@ -1,53 +1,39 @@
-from fastapi import APIRouter, HTTPException, Depends
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from auth.models import User, Token
-from auth.service import hash_password, verify_password, create_access_token, decode_access_token
-from common import db as database
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer
+from fastapi.responses import JSONResponse
 
+from auth.models import User, EmailRequest, PasswordRecoveryRequest, LoginRequest
+import auth.functions as functions
 
-#http://localhost:8005/auth/docs
 auth_api = APIRouter(tags=["Auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
-@auth_api.post("/register")
+@auth_api.post("/register", summary="Créer un nouvel utilisateur (collection par rôle)")
 async def register(user: User):
-    # Vérifie si la DB est bien initialisée
-    if database.db is None:
-        raise HTTPException(status_code=500, detail="DB non initialisée")
-
-    # Vérifie si un utilisateur existe déjà
-    existing = await database.db["users"].find_one({"email": user.email})
-    if existing:
-        raise HTTPException(status_code=400, detail="Un utilisateur avec cet email existe déjà.")
-
-    # Hash du mot de passe
-    user_dict = user.dict()
-    user_dict["password"] = hash_password(user.password)
-
-    # Insertion en base
-    result = await database.db["users"].insert_one(user_dict)
-    return {"message": "Utilisateur enregistré", "id": str(result.inserted_id)}
+    """Route légère : délègue la logique à functions.register_user"""
+    return await functions.register_user(user)
 
 
-@auth_api.post("/login")
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    if database.db is None:
-        raise HTTPException(status_code=500, detail="DB non initialisée")
-
-    # Recherche de l’utilisateur
-    user = await database.db["users"].find_one({"email": form_data.username})
-    if not user or not verify_password(form_data.password, user["password"]):
-        raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect")
-
-    # Ici on ne renvoie pas le token, juste un message
-    return {"message": "Connexion réussie"}
+@auth_api.post("/login", summary="Connexion par email (cherche dans chaque collection)")
+async def login(req: LoginRequest):
+    """Route légère : délègue la logique à functions.login_user"""
+    return await functions.login_user(req)
 
 
-@auth_api.get("/me")
+@auth_api.get("/me", summary="Récupérer le profil depuis le token")
 async def get_me(token: str = Depends(oauth2_scheme)):
-    # Décodage du JWT
-    email = decode_access_token(token)
-    if not email:
-        raise HTTPException(status_code=401, detail="Token invalide ou expiré")
-    return {"email": email}
+    """Route légère : délègue la logique à functions.get_current_user"""
+    return await functions.get_current_user(token)
+
+
+@auth_api.post("/generate-email", summary="Génère un email + mot de passe dans collection du rôle")
+async def generate_email(req: EmailRequest):
+    """Route légère : délègue la logique à functions.generate_email_for_role"""
+    return await functions.generate_email_for_role(req)
+
+
+@auth_api.post("/recover-password", summary="Réinitialise le mot de passe et le retourne")
+async def recover_password(req: PasswordRecoveryRequest):
+    """Route légère : délègue la logique à functions.recover_password_for_role"""
+    return await functions.recover_password_for_role(req)
