@@ -1,119 +1,120 @@
-// Journal.jsx
-import React from "react";
+import type { TutorInfo } from "../auth/Permissions";
+import { useMe } from "../auth/Permissions";
 import "../styles/journal.css";
 
-export default function Journal() {
-  const apprentice = {
-    name: "Prénom Nom",
-    age: 23,
-    role: "Apprenti en développement web",
-    email: "email@email.com",
-    school: {
-      name: "ESEO",
-      program: "Ingénieur 3 (M2) Nouvelles technologies – Promo rentrée 2025",
-    },
-    company: {
-      name: "Entreprise",
-      dates: "04/09/2023  -  03/09/2026",
-      address: "numéro nom_rue code_postal ville",
-    },
-    avatar: "https://avatars.githubusercontent.com/u/9919?s=88",
-  };
+type TutorCardProps = {
+  tutor: TutorInfo;
+};
 
-  const tutors = {
-    main: {
-      title: "Tuteur Entreprise principal",
-      name: "M. Prénom Nom",
-      role: "Auditeur Cybersécurité",
-      email: "email@email.com",
-    },
-    secondary: {
-      title: "Tuteur Entreprise secondaire",
-      name: "-",
-      role: "-",
-      email: "-",
-      phone: "-",
-    },
-    pedagogic: {
-      title: "Tuteur Pédagogique",
-      name: "Mme Prénom Nom",
-      role: "enseignante",
-      email: "email@email.fr",
-    },
-  };
+export default function Journal() {
+  const me = useMe();
+  const { profile, company, school, tutors, journalHeroImageUrl } = me;
+
+  if (!profile || !company || !school || !tutors) {
+    return (
+      <div className="page">
+        <section className="content content-fallback">
+          <h1>Suivi apprenant indisponible</h1>
+          <p>
+            Bonjour {me.fullName}, cette page est reservee au suivi
+            personnalise des apprentis. En tant que{" "}
+            {me.roleLabel.toLowerCase()}, merci d&apos;utiliser les autres
+            rubriques (Promotions, Jury, Documents...) pour acceder aux
+            informations qui vous sont destinees.
+          </p>
+        </section>
+      </div>
+    );
+  }
+
+  const heroImage =
+    journalHeroImageUrl ??
+    "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=2400&auto=format&fit=crop";
 
   return (
     <div className="page">
       <header className="hero">
         <img
           className="hero-bg"
-          src="https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=2400&auto=format&fit=crop"
-          alt=""
+          src={heroImage}
+          alt="Illustration d'entreprise"
         />
         <div className="hero-overlay" />
         <div className="hero-content">
           <div className="apprentice">
             <div className="id-row">
-              <img className="avatar" src={apprentice.avatar} alt="" />
+              <img className="avatar" src={profile.avatarUrl} alt={me.fullName} />
               <div>
                 <div className="name-row">
-                  <h2 className="name">{apprentice.name}</h2>
-                  <span className="age">({apprentice.age} ans)</span>
+                  <h2 className="name">{me.fullName}</h2>
+                  <span className="age">({profile.age} ans)</span>
                 </div>
-                <div className="role">
-                  {apprentice.role} 
-                </div>
+                <div className="role">{profile.position}</div>
                 <div className="contact-row">
-                  <span>✉︎</span>
-                  <a href={`mailto:${apprentice.email}`}>{apprentice.email}</a>
+                  <span>Tel. : {profile.phone}</span>
+                  <span>Ville : {profile.city}</span>
+                  <a href={`mailto:${me.email}`}>{me.email}</a>
                 </div>
               </div>
             </div>
           </div>
 
           <div className="company">
-            <div className="company-name">{apprentice.company.name}</div>
-            <div className="company-dates">{apprentice.company.dates}</div>
-            <div className="company-addr">{apprentice.company.address}</div>
+            <div className="company-name">{company.name}</div>
+            <div className="company-dates">{company.dates}</div>
+            <div className="company-addr">{company.address}</div>
           </div>
         </div>
       </header>
 
       <section className="school-strip">
-        <div className="school-name">{apprentice.school.name}</div>
-        <div className="school-program">{apprentice.school.program}</div>
+        <div className="school-name">{school.name}</div>
+        <div className="school-program">{school.program}</div>
       </section>
 
       <section className="cards">
-        <TutorCard data={tutors.main} />
-        <TutorCard data={tutors.secondary} />
-        <TutorCard data={tutors.pedagogic} />
+        <TutorCard tutor={tutors.enterprisePrimary} />
+        <TutorCard tutor={tutors.enterpriseSecondary} />
+        <TutorCard tutor={tutors.pedagogic} />
       </section>
 
       <section className="content">
         <h1>Journal de formation</h1>
-        <p>Documents</p>
-        <p>Entretiens</p>
-        <p>Jury</p>
+        <p>
+          Retrouvez ici vos documents de formation, le suivi de vos entretiens,
+          ainsi que les elements demandes par les jurys Alteris et l&apos;ESEO.
+        </p>
+        <p>
+          Utilisez la barre de navigation pour acceder directement aux sections
+          Documents, Entretiens ou Jury.
+        </p>
       </section>
     </div>
   );
 }
 
-function TutorCard({ data }) {
+function TutorCard({ tutor }: TutorCardProps) {
   return (
     <article className="card">
-      <h3 className="card-title">{data.title}</h3>
-      <div className="row"><span>👤</span><div className="strong">{data.name}</div></div>
-      <div className="row"><span>🏷️</span><div>{data.role}</div></div>
+      <h3 className="card-title">{tutor.title}</h3>
       <div className="row">
-        <span>✉︎</span>
-        {data.email !== "-" ? (
-          <a href={`mailto:${data.email}`}>{data.email}</a>
-        ) : (
-          <div>-</div>
-        )}
+        <span className="row-label">Nom</span>
+        <div className="strong">{tutor.name}</div>
       </div>
+      <div className="row">
+        <span className="row-label">Role</span>
+        <div>{tutor.role}</div>
+      </div>
+      <div className="row">
+        <span className="row-label">Email</span>
+        <a href={`mailto:${tutor.email}`}>{tutor.email}</a>
+      </div>
+      {tutor.phone ? (
+        <div className="row">
+          <span className="row-label">Tel.</span>
+          <div>{tutor.phone}</div>
+        </div>
+      ) : null}
     </article>
   );
 }

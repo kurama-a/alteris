@@ -147,6 +147,13 @@ body{
   border-bottom:1px dashed var(--border);
 }
 .row:last-child{border-bottom:none}
+.row-label{
+  width:64px;
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:0.04em;
+  color:var(--text);
+}
 .strong{font-weight:600; color:var(--text-strong)}
 .card a{
   color:var(--primary);
@@ -161,6 +168,18 @@ body{
   padding:18px;
   border:1px solid var(--border);
   border-radius:14px;
+}
+
+.content-fallback{
+  max-width:720px;
+  margin:48px auto;
+  text-align:left;
+}
+
+.content-fallback h1{
+  margin-bottom:12px;
+  font-size:20px;
+  color:var(--text-strong);
 }
 
 /* Responsive */

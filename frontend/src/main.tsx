@@ -8,9 +8,7 @@ import { PermissionsProvider } from "./auth/Permissions";
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <PermissionsProvider me={{ id:"1", roles:["Apprentis"], perms:[
-        "journal:read:own","journal:create:own","doc:read","doc:create","meeting:schedule:own","jury:read"
-      ]}}>
+      <PermissionsProvider>
         <App />
       </PermissionsProvider>
     </BrowserRouter>

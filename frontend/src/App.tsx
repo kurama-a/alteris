@@ -1,6 +1,6 @@
-import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
+import RequireAuth from "./components/RequireAuth";
 import Require from "./components/Require";
 
 // pages
@@ -11,6 +11,7 @@ import Documents from "./pages/Documents";
 import Entretiens from "./pages/Entretiens";
 import Juries from "./pages/Juries";
 import Admin from "./pages/Admin";
+import Promotions from "./pages/Promotions";
 import Profil from "./pages/Profil";
 import Notifications from "./pages/Notifications";
 import Recherche from "./pages/Recherche";
@@ -20,20 +21,27 @@ export default function App(){
   return (
     <Routes>
       <Route path="/login" element={<Login/>} />
-      <Route element={<Layout/>}>
+      <Route element={
+        <RequireAuth>
+          <Layout/>
+        </RequireAuth>
+      }>
         <Route index element={<Navigate to="/accueil" replace />} />
         <Route path="/accueil" element={<Accueil/>} />
         <Route path="/journal" element={
-          <Require perm="journal:read:own"><Journal/></Require>
+          <Require perm={["journal:read:own","journal:read:assigned","journal:read:all"]}><Journal/></Require>
         }/>
         <Route path="/documents" element={
           <Require perm="doc:read"><Documents/></Require>
         }/>
         <Route path="/entretiens" element={
-          <Require perm="meeting:schedule:own"><Entretiens/></Require>
+          <Require perm={["meeting:schedule:own","meeting:schedule:team","meeting:participate"]}><Entretiens/></Require>
         }/>
         <Route path="/juries" element={
           <Require perm="jury:read"><Juries/></Require>
+        }/>
+        <Route path="/promotions" element={
+          <Require perm="promotion:manage"><Promotions/></Require>
         }/>
         <Route path="/admin" element={
           <Require perm="user:manage"><Admin/></Require>
@@ -43,6 +51,7 @@ export default function App(){
         <Route path="/recherche" element={<Recherche/>}/>
         <Route path="/help" element={<Aide/>}/>
       </Route>
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 }
