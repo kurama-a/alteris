@@ -7,9 +7,9 @@ def create_app(service_name: str, api, prefix: str) -> FastAPI:
         title=f"API {service_name}",
         description=f"Documentation de l’API {service_name}",
         version="1.0.0",
-        openapi_url=f"{prefix}/openapi.json",
-        docs_url=f"{prefix}/docs",
-        redoc_url=f"{prefix}/redoc"
+        openapi_url=f"{prefix}/openapi.json",  # Ex: /apprenti/openapi.json
+        docs_url=f"{prefix}/docs",            # Ex: /apprenti/docs
+        redoc_url=f"{prefix}/redoc"           # Ex: /apprenti/redoc
     )
 
     app.add_middleware(
@@ -19,7 +19,6 @@ def create_app(service_name: str, api, prefix: str) -> FastAPI:
         allow_headers=["*"],
     )
 
-    # === Connexion MongoDB ===
     @app.on_event("startup")
     async def startup_db():
         await connect_to_mongo()
@@ -28,10 +27,8 @@ def create_app(service_name: str, api, prefix: str) -> FastAPI:
     async def shutdown_db():
         await close_mongo_connection()
 
-    # Inclure les routes métiers
     app.include_router(api, prefix=prefix)
 
-    # Health-check
     @app.get(f"{prefix}/health", tags=["System"])
     def health():
         return {"status": "ok", "service": service_name.lower()}
