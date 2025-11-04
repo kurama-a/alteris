@@ -1,0 +1,83 @@
+
+################################################################################################
+
+Etape 1 :Pour le  Backend  et Frontend
+git checkout backend                 # se placer sur la branche backend
+git checkout backend-chahery         # se placer sur ta branche
+git checkout backend-abdoul          # se placer sur ta branche
+git checkout backend-corentin        # se placer sur ta branche
+
+git add .                            # ajouter les fichiers modifiés
+git commit -m "Ajout de ma fonction" # enregistrer les changements
+git push                             # envoyer sur GitHub
+
+
+
+
+Pour mettre a jour sur le backend 
+
+git merge  'nom de la branch"
+
+
+Apres pour recuperer la dernière version
+git pull de la branch backend 
+À exécuter une seule fois, s’il n’a pas encore récupéré les branches :
+git fetch origin
+
+################################################################################################
+Etape 2: Pour le  Backend  et Frontend(Front end uniquement si on veux consommer les API backend 
+sinon par défaut le front end à son propre environement)
+
+Pour pouvoir demarrer les api backend il faut d'abord :
+
+1-# Création de l’environnement
+python3 -m venv .venv
+
+2-# Activation (macOS / Linux)
+source .venv/bin/activate
+
+3-# Ou activation (Windows CMD)
+.venv\Scripts\activate.bat
+
+4-# Ou activation (Windows PowerShell)
+.venv\Scripts\Activate.ps1
+
+5-# Installation des dépendances
+pip install -r requirements.txt
+
+
+
+################################################################################################
+Etape 3 : Micro services 
+1-Ce diriger vers le dossier backend et démarrer avec python la route avec la commande :
+uvicorn auth.main:app --reload
+Si on voulait démarrer le services apprenti il suffit de remplacer auth par apprenti  de meme pour les autres mico services 
+
+2-Récuperer l'url de l'API  du mico service dans le fichier routes et le coler dans le navigateur  pour tester 
+et voire comment la route focntionne les paramètre que elle prend en commpte avant de le consommer en front 
+Exemple dans le fichier routes de Auth vous verrez : 
+http://localhost:8005/auth/docs
+
+3-Si vous aviez un message d'erreur c'est normale veillez regarder dans le termianle et reegarder le bon port surlequel tourne l'api démarrer en local sur votre machine
+
+4-Si vous souhaitez démarrer tous les microservices veillez ouvire plusieur terminale et lancer a chaque fois :
+uvicorn nom-microsservice.main:app --reload
+
+################################################################################################
+
+Attention !
+
+1-Chaque micro service a son propre fichier de dépendace donc 
+veillez a rester dans votre dossier de micro services pour mettre à jour vos fichier requirement et non dnas le fichier global
+2- Equipe frontend  si on lance une api et on n'a des problèmes de dépendace ou package non installé il faut mettre ajur le fichier requirement du micro 
+services dans le quelle on se troupe pour corriger l'erreur de dépendance 
+3- si la dépendace ne figure pas dans le requiremnt contacté la personne en charge de ce micro service pour qu'il met a jour les papckages 
+################################################################################################
+
+Etape 4 : Instructions   Backend 
+1- Veillez mettre à jours les dépenses pythons pour chaque micro services grace  à :
+pip freeze > requirements.txt
+
+
+
+
