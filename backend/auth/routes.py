@@ -27,6 +27,12 @@ async def get_me(token: str = Depends(oauth2_scheme)):
     return await functions.get_current_user(token)
 
 
+@auth_api.get("/users", summary="Lister les utilisateurs agreges par role")
+async def list_users():
+    """Expose la liste des utilisateurs pour l'administration."""
+    return await functions.list_users()
+
+
 @auth_api.post("/generate-email", summary="Génère un email + mot de passe dans collection du rôle")
 async def generate_email(req: EmailRequest):
     """Route légère : délègue la logique à functions.generate_email_for_role"""

@@ -1,8 +1,13 @@
 import React from "react";
-import type {UserSummary } from "../auth/Permissions";
-import { DEMO_USERS } from "../auth/Permissions";
+import { useAuth } from "../auth/Permissions";
+import type { UserSummary } from "../auth/Permissions";
+import { AUTH_API_URL, fetchJson } from "../config";
 
 type EditableUser = UserSummary;
+
+type UsersResponse = {
+  users: UserSummary[];
+};
 
 const modalBackdropStyle: React.CSSProperties = {
   position: "fixed",
@@ -51,11 +56,57 @@ function Modal({
 }
 
 export default function Admin() {
-  const [users, setUsers] = React.useState<EditableUser[]>(() => DEMO_USERS);
+  const { token } = useAuth();
+  const [users, setUsers] = React.useState<EditableUser[]>([]);
   const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
   const [editUser, setEditUser] = React.useState<EditableUser | null>(null);
   const [editDraft, setEditDraft] = React.useState<EditableUser | null>(null);
   const [deleteIds, setDeleteIds] = React.useState<string[]>([]);
+  const [isFetching, setIsFetching] = React.useState(false);
+  const [fetchError, setFetchError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!token) {
+      setUsers([]);
+      setSelectedIds([]);
+      setFetchError("Authentification requise pour charger les utilisateurs.");
+      setIsFetching(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsFetching(true);
+    setFetchError(null);
+
+    fetchJson<UsersResponse>(`${AUTH_API_URL}/users`, { token })
+      .then((payload) => {
+        if (cancelled) return;
+        const nextUsers = payload.users;
+        setUsers(nextUsers);
+        setSelectedIds((current) =>
+          current.filter((id) => nextUsers.some((candidate) => candidate.id === id))
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Impossible de recuperer les utilisateurs.";
+        setFetchError(message);
+        setUsers([]);
+        setSelectedIds([]);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsFetching(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   const isAllSelected = users.length > 0 && selectedIds.length === users.length;
 
@@ -122,6 +173,26 @@ export default function Admin() {
   return (
     <div style={{ padding: "32px 40px" }}>
       <h1 style={{ fontSize: 28, margin: "0 0 24px" }}>Administration</h1>
+
+      {fetchError ? (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "12px 16px",
+            borderRadius: 8,
+            background: "#fee2e2",
+            color: "#b91c1c",
+          }}
+        >
+          {fetchError}
+        </div>
+      ) : null}
+
+      {isFetching ? (
+        <div style={{ marginBottom: 16, color: "#2563eb" }}>
+          Chargement des utilisateurs...
+        </div>
+      ) : null}
 
       <section style={{ marginBottom: 16, display: "flex", gap: 12 }}>
         <button

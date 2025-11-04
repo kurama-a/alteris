@@ -1,4 +1,3 @@
-from pydantic import BaseModel
 import unicodedata
 import string
 import random
@@ -8,11 +7,11 @@ from passlib.context import CryptContext
 import os
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
-from datetime import datetime
-from typing import Dict
+from typing import Any, Dict, List, Optional
 
 from common import db as database
 from auth.models import UserRole, User, LoginRequest, EmailRequest, PasswordRecoveryRequest
+from auth.role_definitions import ROLE_DEFINITIONS, get_role_definition
 
 # =====================
 # 🔐 Sécurité & JWT
@@ -58,13 +57,12 @@ def create_access_token(data: dict | str) -> str:
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-def decode_access_token(token: str) -> str | None:
+def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     """
-    Décode un JWT et retourne l'identifiant utilisateur ("sub") si valide.
+    Décode un JWT et retourne son payload si valide.
     """
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload.get("sub")
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError:
         return None
 
@@ -91,6 +89,65 @@ def generate_password(length=10) -> str:
     """
     chars = string.ascii_letters + string.digits
     return ''.join(random.choice(chars) for _ in range(length))
+
+
+def build_me_from_document(user: Dict[str, Any], role: str) -> Dict[str, Any]:
+    """
+    Construit la structure « me » partagée avec le frontend à partir
+    d'un document utilisateur stocké en base.
+    """
+    meta = get_role_definition(role)
+    roles = meta.get("roles", [])
+    role_label = meta.get("role_label")
+
+    if not roles:
+        roles = [role.replace("_", " ").title()]
+    if not role_label:
+        role_label = roles[0] if roles else role.replace("_", " ").title()
+
+    full_name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
+    if not full_name:
+        full_name = user.get("full_name") or user.get("name") or user.get("email", "")
+
+    me: Dict[str, Any] = {
+        "id": str(user.get("_id") or user.get("id") or ""),
+        "email": user.get("email", ""),
+        "fullName": full_name,
+        "roles": roles,
+        "roleLabel": role_label,
+        "perms": meta.get("perms", []),
+    }
+
+    stored_roles = user.get("roles")
+    if isinstance(stored_roles, list) and stored_roles:
+        me["roles"] = [str(item) for item in stored_roles]
+
+    stored_role_label = user.get("roleLabel") or user.get("role_label")
+    if isinstance(stored_role_label, str) and stored_role_label.strip():
+        me["roleLabel"] = stored_role_label.strip()
+
+    stored_perms = user.get("perms")
+    if isinstance(stored_perms, list) and stored_perms:
+        merged_perms = set(me["perms"])
+        for perm in stored_perms:
+            if isinstance(perm, str):
+                merged_perms.add(perm)
+        me["perms"] = sorted(merged_perms)
+
+    optional_keys = (
+        "profile",
+        "company",
+        "school",
+        "tutors",
+        "journalHeroImageUrl",
+        "apprentices",
+    )
+    for key in optional_keys:
+        value = user.get(key)
+        if value is not None:
+            me[key] = value
+
+    return me
 
 # =====================
 # 🌍 Domaines par rôle
@@ -166,29 +223,39 @@ async def login_user(req: LoginRequest) -> Dict:
     if database.db is None:
         raise HTTPException(status_code=500, detail="DB non initialisée")
 
-    roles = [role.value for role in UserRole]
+    roles: List[str] = [role.value for role in UserRole]
+    for role_name in ROLE_DEFINITIONS.keys():
+        if role_name not in roles:
+            roles.append(role_name)
+
     for role in roles:
         collection = get_collection_from_role(role)
         user = await collection.find_one({"email": req.email})
         if user:
-            if not verify_password(req.password, user.get("password", "")):
+            hashed_password = user.get("password") or user.get("hashed_password", "")
+            if not hashed_password:
+                raise HTTPException(status_code=500, detail="Mot de passe non configuré")
+
+            if not verify_password(req.password, hashed_password):
                 raise HTTPException(status_code=401, detail="Mot de passe incorrect")
 
-            full_name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
+            me = build_me_from_document(user, role)
+            if not me.get("email"):
+                raise HTTPException(status_code=500, detail="Email utilisateur manquant")
 
-            access_token = create_access_token({
-                "sub": user["email"],
-                "role": role,
-                "full_name": full_name
-            })
+            access_token = create_access_token(
+                {
+                    "sub": me["email"],
+                    "role": role,
+                    "user_id": me.get("id"),
+                }
+            )
 
             return {
                 "message": "Connexion réussie",
                 "access_token": access_token,
                 "token_type": "bearer",
-                "email": user["email"],
-                "full_name": full_name,
-                "role": role
+                "me": me,
             }
 
     raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
@@ -206,9 +273,41 @@ async def get_current_user(token: str) -> Dict:
     if not payload:
         raise HTTPException(status_code=401, detail="Token invalide ou expiré")
 
-    # Si decode_access_token renvoie juste l'email, on retourne email.
-    # Si elle renvoie un dict (payload), on le retourne directement.
-    return {"payload": payload}
+    email = payload.get("sub")
+    role = payload.get("role")
+    if not email or not role:
+        raise HTTPException(status_code=401, detail="Token incomplet")
+
+    collection = get_collection_from_role(role)
+    user = await collection.find_one({"email": email})
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+
+    me = build_me_from_document(user, role)
+    return {"me": me}
+
+
+# ------------------------
+# LIST USERS
+# ------------------------
+async def list_users() -> Dict[str, Any]:
+    """
+    Retourne la liste des utilisateurs connus, regroupés à travers les rôles.
+    """
+    if database.db is None:
+        raise HTTPException(status_code=500, detail="DB non initialisée")
+
+    users: List[Dict[str, Any]] = []
+    roles = {role.value for role in UserRole}
+    roles.update(ROLE_DEFINITIONS.keys())
+
+    for role in roles:
+        collection = get_collection_from_role(role)
+        cursor = collection.find()
+        async for user in cursor:
+            users.append(build_me_from_document(user, role))
+
+    return {"users": users}
 
 
 # ------------------------

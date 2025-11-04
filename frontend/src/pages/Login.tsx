@@ -1,6 +1,6 @@
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { useAuth, DEMO_ACCOUNTS } from "../auth/Permissions";
+import { useAuth } from "../auth/Permissions";
 import "../styles/Login.css";
 
 type LocationState = {
@@ -24,12 +24,12 @@ export default function Login() {
     return <Navigate to={from} replace />;
   }
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
 
-    const result = login(email, password);
+    const result = await login(email, password);
 
     if (!result.ok) {
       setError(result.error);
@@ -67,19 +67,6 @@ export default function Login() {
           </button>
         </form>
 
-        <div className="login-demo">
-          <h2>Comptes de demonstration</h2>
-          <ul className="login-demo-list">
-            {DEMO_ACCOUNTS.map((account) => (
-              <li key={account.email}>
-                <span className="login-demo-role">{account.role}</span>
-                <code>{account.email}</code>
-                <span className="login-demo-sep">/</span>
-                <code>{account.password}</code>
-              </li>
-            ))}
-          </ul>
-        </div>
       </div>
     </div>
   );
