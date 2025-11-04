@@ -11,7 +11,6 @@ export default function Layout() {
     "journal:read:assigned",
     "journal:read:all",
   ]);
-  const canDocuments = useCan("doc:read");
   const canMeetings = useCan([
     "meeting:schedule:own",
     "meeting:schedule:team",
@@ -31,7 +30,6 @@ export default function Layout() {
   const links = [
     { to: "/accueil", label: "Accueil", visible: true },
     { to: "/journal", label: "Journal", visible: canJournal },
-    { to: "/documents", label: "Documents", visible: canDocuments },
     { to: "/entretiens", label: "Entretiens", visible: canMeetings },
     { to: "/juries", label: "Juries", visible: canJury },
     { to: "/promotions", label: "Promotions", visible: canPromotions },

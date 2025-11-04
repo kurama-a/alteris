@@ -35,6 +35,112 @@ export type TutorSet = {
   pedagogic: TutorInfo;
 };
 
+export type ApprenticeJournal = {
+  id: string;
+  email: string;
+  fullName: string;
+  profile: ProfileInfo;
+  company: CompanyInfo;
+  school: SchoolInfo;
+  tutors: TutorSet | null;
+  journalHeroImageUrl?: string;
+};
+
+const CAMILLE_LEROUX_JOURNAL: ApprenticeJournal = {
+  id: "APP-001",
+  email: "apprenti@alteris.fr",
+  fullName: "Camille Leroux",
+  profile: {
+    age: 23,
+    position: "Apprentie développeuse web",
+    phone: "+33 6 12 34 56 78",
+    city: "Angers",
+    avatarUrl: "https://avatars.githubusercontent.com/u/9919?s=160",
+  },
+  company: {
+    name: "Alteris Solutions",
+    dates: "04/09/2023 - 03/09/2026",
+    address: "12 rue des Entrepreneurs, 49000 Angers",
+  },
+  school: {
+    name: "ESEO",
+    program: "Cycle ingénieur – M2 Nouvelles Technologies (Promo 2025)",
+  },
+  tutors: {
+    enterprisePrimary: {
+      title: "Tuteur entreprise principal",
+      name: "Marc Delaunay",
+      role: "Lead développeur",
+      email: "marc.delaunay@alteris.fr",
+      phone: "+33 6 45 23 11 67",
+    },
+    enterpriseSecondary: {
+      title: "Tuteur entreprise secondaire",
+      name: "Sofia Mendes",
+      role: "Cheffe de projet digitale",
+      email: "sofia.mendes@alteris.fr",
+      phone: "+33 7 68 90 12 34",
+    },
+    pedagogic: {
+      title: "Référente pédagogique",
+      name: "Claire Morel",
+      role: "Enseignante ESEO",
+      email: "claire.morel@eseo.fr",
+      phone: "+33 2 41 86 65 00",
+    },
+  },
+  journalHeroImageUrl:
+    "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=2400&auto=format&fit=crop",
+};
+
+const JULIEN_MARTIN_JOURNAL: ApprenticeJournal = {
+  id: "APP-017",
+  email: "julien.martin@alteris.fr",
+  fullName: "Julien Martin",
+  profile: {
+    age: 24,
+    position: "Apprenti data analyste",
+    phone: "+33 6 45 78 98 21",
+    city: "Nantes",
+    avatarUrl:
+      "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=400&auto=format&fit=crop",
+  },
+  company: {
+    name: "Alteris Analytics",
+    dates: "01/09/2022 - 31/08/2025",
+    address: "28 avenue du Port, 44000 Nantes",
+  },
+  school: {
+    name: "ESEO",
+    program: "Cycle ingénieur – M2 Intelligence des Données",
+  },
+  tutors: {
+    enterprisePrimary: {
+      title: "Tuteur entreprise principal",
+      name: "Sofia Mendes",
+      role: "Cheffe de projet digitale",
+      email: "sofia.mendes@alteris.fr",
+      phone: "+33 7 68 90 12 34",
+    },
+    enterpriseSecondary: {
+      title: "Tuteur entreprise secondaire",
+      name: "Marc Delaunay",
+      role: "Lead développeur",
+      email: "marc.delaunay@alteris.fr",
+      phone: "+33 6 45 23 11 67",
+    },
+    pedagogic: {
+      title: "Référent pédagogique",
+      name: "Claire Morel",
+      role: "Enseignante ESEO",
+      email: "claire.morel@eseo.fr",
+      phone: "+33 2 41 86 65 00",
+    },
+  },
+  journalHeroImageUrl:
+    "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?q=80&w=2400&auto=format&fit=crop",
+};
+
 export type Me = {
   id: string;
   email: string;
@@ -47,6 +153,7 @@ export type Me = {
   school?: SchoolInfo;
   tutors?: TutorSet | null;
   journalHeroImageUrl?: string;
+  apprentices?: ApprenticeJournal[];
 };
 
 type LoginResult =
@@ -72,9 +179,7 @@ export const ACCOUNTS: Account[] = [
     email: "apprenti@alteris.fr",
     password: "Alteris2025!",
     me: {
-      id: "APP-001",
-      email: "apprenti@alteris.fr",
-      fullName: "Camille Leroux",
+      ...CAMILLE_LEROUX_JOURNAL,
       roles: ["Apprentis"],
       roleLabel: "Apprentie",
       perms: [
@@ -85,47 +190,6 @@ export const ACCOUNTS: Account[] = [
         "meeting:schedule:own",
         "jury:read",
       ],
-      profile: {
-        age: 23,
-        position: "Apprentie développeuse web",
-        phone: "+33 6 12 34 56 78",
-        city: "Angers",
-        avatarUrl: "https://avatars.githubusercontent.com/u/9919?s=160",
-      },
-      company: {
-        name: "Alteris Solutions",
-        dates: "04/09/2023 — 03/09/2026",
-        address: "12 rue des Entrepreneurs, 49000 Angers",
-      },
-      school: {
-        name: "ESEO",
-        program: "Cycle ingénieur – M2 Nouvelles Technologies (Promo 2025)",
-      },
-      tutors: {
-        enterprisePrimary: {
-          title: "Tuteur entreprise principal",
-          name: "Marc Delaunay",
-          role: "Lead développeur",
-          email: "marc.delaunay@alteris.fr",
-          phone: "+33 6 45 23 11 67",
-        },
-        enterpriseSecondary: {
-          title: "Tuteur entreprise secondaire",
-          name: "Sofia Mendes",
-          role: "Cheffe de projet digitale",
-          email: "sofia.mendes@alteris.fr",
-          phone: "+33 7 68 90 12 34",
-        },
-        pedagogic: {
-          title: "Référente pédagogique",
-          name: "Claire Morel",
-          role: "Enseignante ESEO",
-          email: "claire.morel@eseo.fr",
-          phone: "+33 2 41 86 65 00",
-        },
-      },
-      journalHeroImageUrl:
-        "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=2400&auto=format&fit=crop",
     },
   },
   {
@@ -138,6 +202,7 @@ export const ACCOUNTS: Account[] = [
       roles: ["Tuteur pédagogique"],
       roleLabel: "Tuteur pédagogique",
       perms: ["journal:read:all", "doc:read", "meeting:participate", "jury:read"],
+      apprentices: [CAMILLE_LEROUX_JOURNAL, JULIEN_MARTIN_JOURNAL],
     },
   },
   {
@@ -147,9 +212,10 @@ export const ACCOUNTS: Account[] = [
       id: "MA-208",
       email: "maitre@alteris.fr",
       fullName: "Isabelle Roche",
-      roles: ["Maître d’apprentissage"],
-      roleLabel: "Maître d’apprentissage",
+      roles: ["Maître d'apprentissage"],
+      roleLabel: "Maître d'apprentissage",
       perms: ["journal:read:assigned", "doc:read", "meeting:schedule:team"],
+      apprentices: [CAMILLE_LEROUX_JOURNAL],
     },
   },
   {

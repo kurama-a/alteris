@@ -7,7 +7,6 @@ import Require from "./components/Require";
 import Login from "./pages/Login";
 import Accueil from "./pages/Accueil";
 import Journal from "./pages/Journal";
-import Documents from "./pages/Documents";
 import Entretiens from "./pages/Entretiens";
 import Juries from "./pages/Juries";
 import Admin from "./pages/Admin";
@@ -30,9 +29,6 @@ export default function App(){
         <Route path="/accueil" element={<Accueil/>} />
         <Route path="/journal" element={
           <Require perm={["journal:read:own","journal:read:assigned","journal:read:all"]}><Journal/></Require>
-        }/>
-        <Route path="/documents" element={
-          <Require perm="doc:read"><Documents/></Require>
         }/>
         <Route path="/entretiens" element={
           <Require perm={["meeting:schedule:own","meeting:schedule:team","meeting:participate"]}><Entretiens/></Require>
