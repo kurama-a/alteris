@@ -67,7 +67,7 @@ type Account = {
   me: Me;
 };
 
-const ACCOUNTS: Account[] = [
+export const ACCOUNTS: Account[] = [
   {
     email: "apprenti@alteris.fr",
     password: "Alteris2025!",
@@ -224,6 +224,16 @@ export const DEMO_ACCOUNTS: DemoAccount[] = ACCOUNTS.map((account) => ({
   email: account.email,
   password: account.password,
   role: account.me.roleLabel,
+}));
+
+export type UserSummary = Pick<Me, "id" | "email" | "fullName" | "roleLabel" | "perms">;
+
+export const DEMO_USERS: UserSummary[] = ACCOUNTS.map((account) => ({
+  id: account.me.id,
+  email: account.me.email,
+  fullName: account.me.fullName,
+  roleLabel: account.me.roleLabel,
+  perms: [...account.me.perms],
 }));
 
 function readStoredMe(): Me | null {

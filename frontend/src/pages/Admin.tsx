@@ -1,1 +1,347 @@
-export default function Admin(){ return <h1>Administration</h1>; }
+import React from "react";
+import type {UserSummary } from "../auth/Permissions";
+import { DEMO_USERS } from "../auth/Permissions";
+
+type EditableUser = UserSummary;
+
+const modalBackdropStyle: React.CSSProperties = {
+  position: "fixed",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: "rgba(0, 0, 0, 0.45)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 1000,
+};
+
+const modalContainerStyle: React.CSSProperties = {
+  backgroundColor: "#fff",
+  borderRadius: 8,
+  boxShadow: "0 20px 45px rgba(15, 23, 42, 0.25)",
+  maxWidth: 520,
+  width: "100%",
+  padding: "24px 28px",
+};
+
+function Modal({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div style={modalBackdropStyle} role="dialog" aria-modal="true">
+      <div style={modalContainerStyle}>
+        <header style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2 style={{ margin: 0, fontSize: 20 }}>{title}</h2>
+          <button onClick={onClose} style={{ border: "none", background: "transparent", fontSize: 18, cursor: "pointer" }} aria-label="Fermer">
+            ×
+          </button>
+        </header>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export default function Admin() {
+  const [users, setUsers] = React.useState<EditableUser[]>(() => DEMO_USERS);
+  const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
+  const [editUser, setEditUser] = React.useState<EditableUser | null>(null);
+  const [editDraft, setEditDraft] = React.useState<EditableUser | null>(null);
+  const [deleteIds, setDeleteIds] = React.useState<string[]>([]);
+
+  const isAllSelected = users.length > 0 && selectedIds.length === users.length;
+
+  const toggleSelect = React.useCallback(
+    (id: string) => {
+      setSelectedIds((current) =>
+        current.includes(id) ? current.filter((candidate) => candidate !== id) : [...current, id]
+      );
+    },
+    [setSelectedIds]
+  );
+
+  const toggleSelectAll = React.useCallback(() => {
+    setSelectedIds((current) => (current.length === users.length ? [] : users.map((user) => user.id)));
+  }, [users]);
+
+  const beginEdit = React.useCallback((user: EditableUser) => {
+    setEditUser(user);
+    setEditDraft({ ...user, perms: [...user.perms] });
+  }, []);
+
+  const closeEditModal = React.useCallback(() => {
+    setEditUser(null);
+    setEditDraft(null);
+  }, []);
+
+  const handleEditChange = React.useCallback(
+    (key: keyof EditableUser, value: string) => {
+      setEditDraft((current) => {
+        if (!current) return current;
+        if (key === "perms") {
+          return { ...current, perms: value.split(",").map((item) => item.trim()).filter(Boolean) };
+        }
+        return { ...current, [key]: value };
+      });
+    },
+    []
+  );
+
+  const saveEdit = React.useCallback(() => {
+    if (!editDraft) return;
+    setUsers((current) => current.map((candidate) => (candidate.id === editDraft.id ? editDraft : candidate)));
+    setSelectedIds((current) => (current.includes(editDraft.id) ? current : current));
+    closeEditModal();
+  }, [editDraft, closeEditModal]);
+
+  const requestDelete = React.useCallback((ids: string[]) => {
+    setDeleteIds(ids);
+  }, []);
+
+  const closeDeleteModal = React.useCallback(() => {
+    setDeleteIds([]);
+  }, []);
+
+  const confirmDelete = React.useCallback(() => {
+    if (deleteIds.length === 0) return;
+    setUsers((current) => current.filter((user) => !deleteIds.includes(user.id)));
+    setSelectedIds((current) => current.filter((id) => !deleteIds.includes(id)));
+    closeDeleteModal();
+  }, [deleteIds, closeDeleteModal]);
+
+  const renderPerms = (perms: string[]) => perms.join(", ");
+
+  return (
+    <div style={{ padding: "32px 40px" }}>
+      <h1 style={{ fontSize: 28, margin: "0 0 24px" }}>Administration</h1>
+
+      <section style={{ marginBottom: 16, display: "flex", gap: 12 }}>
+        <button
+          onClick={() => requestDelete(selectedIds)}
+          disabled={selectedIds.length === 0}
+          style={{
+            padding: "10px 16px",
+            borderRadius: 6,
+            border: "1px solid #e11d48",
+            background: selectedIds.length === 0 ? "#fde7ee" : "#f43f5e",
+            color: selectedIds.length === 0 ? "#9f1239" : "#fff",
+            cursor: selectedIds.length === 0 ? "not-allowed" : "pointer",
+          }}
+        >
+          Supprimer la sélection
+        </button>
+      </section>
+
+      <div style={{ overflowX: "auto", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead style={{ backgroundColor: "#f8fafc", textAlign: "left" }}>
+            <tr>
+              <th style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0" }}>
+                <input
+                  type="checkbox"
+                  checked={isAllSelected}
+                  onChange={toggleSelectAll}
+                  aria-label="Tout sélectionner"
+                />
+              </th>
+              <th style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0" }}>ID</th>
+              <th style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0" }}>Nom complet</th>
+              <th style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0" }}>Email</th>
+              <th style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0" }}>Rôle</th>
+              <th style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0" }}>Permissions</th>
+              <th style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0" }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map((user) => (
+              <tr key={user.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                <td style={{ padding: "12px 16px" }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(user.id)}
+                    onChange={() => toggleSelect(user.id)}
+                    aria-label={`Sélectionner ${user.fullName}`}
+                  />
+                </td>
+                <td style={{ padding: "12px 16px", fontWeight: 500 }}>{user.id}</td>
+                <td style={{ padding: "12px 16px" }}>{user.fullName}</td>
+                <td style={{ padding: "12px 16px" }}>{user.email}</td>
+                <td style={{ padding: "12px 16px" }}>{user.roleLabel}</td>
+                <td style={{ padding: "12px 16px" }}>{renderPerms(user.perms)}</td>
+                <td style={{ padding: "12px 16px", display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => beginEdit(user)}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 6,
+                      border: "1px solid #2563eb",
+                      background: "#2563eb",
+                      color: "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Modifier
+                  </button>
+                  <button
+                    onClick={() => requestDelete([user.id])}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 6,
+                      border: "1px solid #dc2626",
+                      background: "#fff",
+                      color: "#dc2626",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Supprimer
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {users.length === 0 && (
+              <tr>
+                <td colSpan={7} style={{ padding: "24px 16px", textAlign: "center", color: "#64748b" }}>
+                  Aucun utilisateur à afficher.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {editUser && editDraft && (
+        <Modal title={`Modifier ${editUser.fullName}`} onClose={closeEditModal}>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveEdit();
+            }}
+            style={{ display: "flex", flexDirection: "column", gap: 16 }}
+          >
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span>Nom complet</span>
+              <input
+                type="text"
+                value={editDraft.fullName}
+                onChange={(event) => handleEditChange("fullName", event.target.value)}
+                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                required
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span>Email</span>
+              <input
+                type="email"
+                value={editDraft.email}
+                onChange={(event) => handleEditChange("email", event.target.value)}
+                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                required
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span>Rôle</span>
+              <input
+                type="text"
+                value={editDraft.roleLabel}
+                onChange={(event) => handleEditChange("roleLabel", event.target.value)}
+                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                required
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span>Permissions (séparées par des virgules)</span>
+              <input
+                type="text"
+                value={editDraft.perms.join(", ")}
+                onChange={(event) => handleEditChange("perms", event.target.value)}
+                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+              />
+            </label>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+              <button
+                type="button"
+                onClick={closeEditModal}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: 6,
+                  border: "1px solid #cbd5f5",
+                  background: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                type="submit"
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: 6,
+                  border: "1px solid #2563eb",
+                  background: "#2563eb",
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                Enregistrer
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {deleteIds.length > 0 && (
+        <Modal
+          title={
+            deleteIds.length === 1
+              ? "Confirmer la suppression"
+              : `Confirmer la suppression de ${deleteIds.length} utilisateurs`
+          }
+          onClose={closeDeleteModal}
+        >
+          <p style={{ marginBottom: 24, lineHeight: 1.5 }}>
+            Êtes-vous sûr de vouloir supprimer{" "}
+            {deleteIds.length === 1 ? "cet utilisateur" : "ces utilisateurs sélectionnés"} ? Cette action est
+            irréversible.
+          </p>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+            <button
+              type="button"
+              onClick={closeDeleteModal}
+              style={{
+                padding: "10px 16px",
+                borderRadius: 6,
+                border: "1px solid #cbd5f5",
+                background: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={confirmDelete}
+              style={{
+                padding: "10px 16px",
+                borderRadius: 6,
+                border: "1px solid #dc2626",
+                background: "#dc2626",
+                color: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              Supprimer
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
