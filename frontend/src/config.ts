@@ -2,7 +2,7 @@ const DEFAULT_API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost";
 
 export const AUTH_API_URL =
-  import.meta.env.VITE_AUTH_API_URL ?? `${DEFAULT_API_BASE_URL}:54730/auth`;
+  import.meta.env.VITE_AUTH_API_URL ?? `${DEFAULT_API_BASE_URL}:5582/auth`;
 
 export type JsonFetchOptions = RequestInit & {
   token?: string;
