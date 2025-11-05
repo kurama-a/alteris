@@ -4,7 +4,8 @@ import RequireAuth from "./components/RequireAuth";
 import Require from "./components/Require";
 
 // pages
-import Login from "./pages/Login";
+//import Login from "./pages/Login";
+import Login from "./pages/Login"
 import Accueil from "./pages/Accueil";
 import Journal from "./pages/Journal";
 import Entretiens from "./pages/Entretiens";
