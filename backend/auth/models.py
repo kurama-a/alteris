@@ -10,6 +10,7 @@ class UserRole(str, Enum):
     maitre_apprentissage = "maitre_apprentissage"
     tuteur_pedagogique = "tuteur_pedagogique"
     entreprise_externe = "entreprise_externe"
+    admin = "administrateur"
 
 # ✅ Schéma de requête
 class User(BaseModel):
@@ -19,8 +20,6 @@ class User(BaseModel):
     phone: str = Field(..., example="+22912345678")
     password: str = Field(..., example="securePassword123")
     role: UserRole = Field(..., description="Rôle à choisir dans la liste")
-
-
 
 class UserInDB(User):
     hashed_password: str

@@ -85,7 +85,7 @@ ROLE_DEFINITIONS: Dict[str, RoleDefinition] = {
             "journal:read:all",
         ],
     },
-    "admin": {
+    "administrateur": {
         "roles": ["Administrateur de la plateforme"],
         "role_label": "Administrateur",
         "perms": [
