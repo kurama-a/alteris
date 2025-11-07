@@ -54,13 +54,7 @@ async def associer_tuteur(data: AssocierTuteurRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur serveur : {str(e)}")
     
-@admin_api.delete("/apprenti/{apprenti_id}", summary="Supprimer un apprenti par ID")
-async def delete_apprenti(apprenti_id: str):
-    """
-    Supprime un apprenti de la collection users_apprenti à partir de son ID.
-    Exemple : DELETE /admin/apprenti/672a5f3b25d9a6b1a4d7b8d2
-    """
-    return await supprimer_apprenti_par_id(apprenti_id)
+
 
 @admin_api.get("/promos/generate/annee/{annee_academique}")
 async def generate_promo_by_annee(annee_academique: str):
@@ -142,7 +136,7 @@ async def associer_responsable_cursus(data: AssocierResponsablePromoRequest):
         "responsable": responsable_info
     }
 
-@admin_api.post("/associer-responsable_cursus")
+@admin_api.post("/associer-responsable_cursus-apprenti")
 async def associer_responsable_cursus(data: AssocierResponsableCursusRequest):
     apprenti_collection = get_collection_from_role("apprenti")
     responsable_cursus_collection = get_collection_from_role("responsable_cursus")
