@@ -2,7 +2,7 @@ from apprenti.models import HealthResponse, User
 import common.db as database   # ← importer le module complet
 from fastapi import APIRouter, HTTPException
 from bson import ObjectId
-from functions import recuperer_infos_apprenti_completes
+from .functions import recuperer_infos_apprenti_completes
 apprenti_api = APIRouter(tags=["Apprenti"])
 
 @apprenti_api.get("/health", response_model=HealthResponse, tags=["System"])
