@@ -10,3 +10,7 @@ class AssocierTuteurRequest(BaseModel):
     apprenti_id: str
     tuteur_id: str
 
+class AssocierResponsableCursusRequest(BaseModel):
+    apprenti_id: str
+    responsable_cursus_id: str
+
