@@ -43,7 +43,7 @@ export default function Login() {
   return (
     <div className="login-page">
       <div className="login-box">
-        <h1 className="login-title">Connexion</h1>
+        <h1 className="login-title">Alteris - Connexion</h1>
         <form className="login-form" onSubmit={handleSubmit} noValidate>
           <input
             type="email"

@@ -2,7 +2,7 @@ const DEFAULT_API_AUTH_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost";
 
 const DEFAULT_API_AUTH_PORT =
-  import.meta.env.VITE_API_BASE_PORT ?? "2008";
+  import.meta.env.VITE_API_BASE_PORT ?? "5108";
 
 export const AUTH_API_URL = `${DEFAULT_API_AUTH_URL}:${DEFAULT_API_AUTH_PORT}/auth`;
 
