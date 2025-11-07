@@ -1,10 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException,Body
 from pydantic import BaseModel
 from bson import ObjectId
 import common.db as database
-from models import AssocierTuteurRequest
-from models import AssocierResponsableCursusRequest
-
+from models import AssocierTuteurRequest,UserUpdateModel
+from models import AssocierResponsableCursusRequest,AssocierResponsablePromoRequest
+from functions import get_apprentis_by_annee_academique ,supprimer_utilisateur_par_role_et_id,modifier_utilisateur_par_role_et_id
 def get_collection_name_by_role(role: str) -> str:
     return f"users_{role.lower().replace(' ', '_')}"
 
@@ -54,7 +54,24 @@ async def associer_tuteur(data: AssocierTuteurRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur serveur : {str(e)}")
     
+@admin_api.delete("/apprenti/{apprenti_id}", summary="Supprimer un apprenti par ID")
+async def delete_apprenti(apprenti_id: str):
+    """
+    Supprime un apprenti de la collection users_apprenti à partir de son ID.
+    Exemple : DELETE /admin/apprenti/672a5f3b25d9a6b1a4d7b8d2
+    """
+    return await supprimer_apprenti_par_id(apprenti_id)
 
+@admin_api.get("/promos/generate/annee/{annee_academique}")
+async def generate_promo_by_annee(annee_academique: str):
+    """
+    Génère une promo à partir de l'année académique (ex: 'E5a', '2024-2025', etc.)
+    """
+    promo = await get_apprentis_by_annee_academique(annee_academique)
+    return {
+        "message": f"✅ Promo '{annee_academique}' générée avec succès",
+        "data": promo
+    }
 
 @admin_api.post("/associer-maitre")
 async def associer_maitre(data: AssocierTuteurRequest):
@@ -87,6 +104,44 @@ async def associer_maitre(data: AssocierTuteurRequest):
         "maitre": maitre_info
     }
 
+@admin_api.post("/associer-responsable-cursus")
+async def associer_responsable_cursus(data: AssocierResponsablePromoRequest):
+    db = database.db
+    if db is None:
+        raise HTTPException(status_code=500, detail="Connexion DB absente")
+
+    # 🔍 Récupération des collections
+    promo_collection = db["promos"]
+    responsable_collection = db["users_responsable_cursus"]
+
+    # 🔍 Étape 1 : Vérifier que le responsable existe
+    responsable = await responsable_collection.find_one({"_id": ObjectId(data.responsable_id)})
+    if not responsable:
+        raise HTTPException(status_code=404, detail="Responsable de cursus introuvable")
+
+    responsable_info = {
+        "responsable_id": str(responsable["_id"]),
+        "first_name": responsable.get("first_name"),
+        "last_name": responsable.get("last_name"),
+        "email": responsable.get("email"),
+        "phone": responsable.get("phone"),
+    }
+
+    # 🔄 Étape 2 : Associer au document promo via update
+    result = await promo_collection.update_one(
+        {"annee_academique": data.promo_annee_academique},
+        {"$set": {"responsable_cursus": responsable_info}}
+    )
+
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Promotion non trouvée ou déjà associée")
+
+    return {
+        "message": "✅ Responsable de cursus associé avec succès",
+        "promo": data.promo_annee_academique,
+        "responsable": responsable_info
+    }
+
 @admin_api.post("/associer-responsable_cursus")
 async def associer_responsable_cursus(data: AssocierResponsableCursusRequest):
     apprenti_collection = get_collection_from_role("apprenti")
@@ -117,3 +172,31 @@ async def associer_responsable_cursus(data: AssocierResponsableCursusRequest):
         "apprenti_id": data.apprenti_id,
         "responsable_cursus": responsable_cursus_info
     }
+
+
+@admin_api.delete("/user/{role}/{user_id}", summary="Supprimer un utilisateur par rôle et ID")
+async def delete_user(role: str, user_id: str):
+    """
+    Supprime un utilisateur d'une collection spécifique (ex: users_apprenti) à partir de son rôle et ID.
+
+    Exemple :
+    - DELETE /admin/user/apprenti/65ab1234...
+    - DELETE /admin/user/maitre_apprentissage/65ab5678...
+    """
+    return await supprimer_utilisateur_par_role_et_id(role, user_id)
+
+@admin_api.put("/user/{role}/{user_id}", summary="Modifier un utilisateur par rôle et ID")
+async def update_user(role: str, user_id: str, payload: dict = Body(...)):
+    """
+    Modifie un utilisateur dans une collection spécifique (users_<role>) à partir de son ID.
+
+    Exemple :
+    - PUT /admin/user/apprenti/65ab1234...
+      Body: { "first_name": "Ali", "phone": "0601020304" }
+    """
+    return await modifier_utilisateur_par_role_et_id(role, user_id, payload)
+
+
+@admin_api.put("/user/{role}/{user_id}", summary="Modifier un utilisateur (apprenti, tuteur, etc.)")
+async def update_user(role: str, user_id: str, payload: dict):
+    return await modifier_utilisateur_par_role_et_id(role, user_id, payload)
