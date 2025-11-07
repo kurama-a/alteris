@@ -140,6 +140,7 @@ async def register_user(user: User) -> Dict:
         "last_name": user.last_name,
         "email": user.email,
         "phone": user.phone,
+        "annee_academique": user.annee_academique,
         "password": hashed_password,
         "role": role,
         "created_at": datetime.utcnow(),

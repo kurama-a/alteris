@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from bson import ObjectId
 import common.db as database
 from models import AssocierTuteurRequest
+from models import AssocierResponsableCursusRequest
+
 def get_collection_name_by_role(role: str) -> str:
     return f"users_{role.lower().replace(' ', '_')}"
 
@@ -53,6 +55,7 @@ async def associer_tuteur(data: AssocierTuteurRequest):
         raise HTTPException(status_code=500, detail=f"Erreur serveur : {str(e)}")
     
 
+
 @admin_api.post("/associer-maitre")
 async def associer_maitre(data: AssocierTuteurRequest):
     apprenti_collection = get_collection_from_role("apprenti")
@@ -84,33 +87,33 @@ async def associer_maitre(data: AssocierTuteurRequest):
         "maitre": maitre_info
     }
 
-@admin_api.post("/associer-coordonatrice")
-async def associer_coordonatrice(data: AssocierTuteurRequest):
+@admin_api.post("/associer-responsable_cursus")
+async def associer_responsable_cursus(data: AssocierResponsableCursusRequest):
     apprenti_collection = get_collection_from_role("apprenti")
-    coordo_collection = get_collection_from_role("coordonatrice")
+    responsable_cursus_collection = get_collection_from_role("responsable_cursus")
 
-    coordo = await coordo_collection.find_one({"_id": ObjectId(data.tuteur_id)})
-    if not coordo:
-        raise HTTPException(status_code=404, detail="Coordonnatrice inexistante")
+    responsable_cursus = await responsable_cursus_collection.find_one({"_id": ObjectId(data.responsable_cursus_id)})
+    if not responsable_cursus:
+        raise HTTPException(status_code=404, detail="responsable_cursus inexistant")
 
-    coordo_info = {
-        "coordonatrice_id": str(coordo["_id"]),
-        "first_name": coordo.get("first_name"),
-        "last_name": coordo.get("last_name"),
-        "email": coordo.get("email"),
-        "phone": coordo.get("phone"),
+    responsable_cursus_info = {
+        "responsable_cursus_id": str(responsable_cursus["_id"]),
+        "first_name": responsable_cursus.get("first_name"),
+        "last_name": responsable_cursus.get("last_name"),
+        "email": responsable_cursus.get("email"),
+        "phone": responsable_cursus.get("phone"),
     }
 
     result = await apprenti_collection.update_one(
         {"_id": ObjectId(data.apprenti_id)},
-        {"$set": {"coordonatrice": coordo_info}}
+        {"$set": {"responsable_cursus": responsable_cursus_info}}
     )
 
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Apprenti non trouvé ou déjà associé")
 
     return {
-        "message": "✅ Coordonnatrice associée avec succès",
+        "message": "✅ responsable_cursus associé avec succès",
         "apprenti_id": data.apprenti_id,
-        "coordonatrice": coordo_info
+        "responsable_cursus": responsable_cursus_info
     }
