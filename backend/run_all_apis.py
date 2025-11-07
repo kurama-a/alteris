@@ -10,6 +10,9 @@ MICROSERVICES = [
     {"name": "coordonatrice", "path": "coordonatrice", "module": "main"},
     {"name": "auth", "path": "auth", "module": "main"},
     {"name": "admin", "path": "admin", "module": "main"},
+    {"name": "entreprise", "path": "entreprise", "module": "main"},
+    {"name": "ecole", "path": "ecole", "module": "main"},
+    {"name": "responsableformation", "path": "responsableformation", "module": "main"}
 ]
 
 processes = []
