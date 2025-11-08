@@ -11,7 +11,7 @@ def get_profile():
 
 @responsableformation_api.get("/health", response_model=HealthResponse, tags=["System"])
 def health():
-    return {"status": "ok", "service": "responsableformation"}
+    return {"status": "ok", "service": "responsable_cursus"}
 
 
 # ✅ Infos complètes
@@ -19,8 +19,8 @@ def health():
 async def get_responsableformation_infos_completes(responsableformation_id: str):
     if database.db is None:
         raise HTTPException(status_code=500, detail="DB non initialisée")
-    # NOTE: ajuster le nom de collection si besoin (ex: users_responsable_formation)
-    col = database.db["users_responsableformation"]
+    # NOTE: collection alignée avec le rôle standardisé
+    col = database.db["users_responsable_cursus"]
     doc = await col.find_one({"_id": ObjectId(responsableformation_id)})
     if not doc:
         raise HTTPException(status_code=404, detail="Responsable de formation introuvable")

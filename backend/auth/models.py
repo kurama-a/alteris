@@ -10,6 +10,9 @@ class UserRole(str, Enum):
     maitre_apprentissage = "maitre_apprentissage"
     tuteur_pedagogique = "tuteur_pedagogique"
     entreprise_externe = "entreprise_externe"
+    ecole = "ecole"
+    jury = "jury"
+    professeur = "professeur"
 
 # ✅ Schéma de requête
 class User(BaseModel):
@@ -19,6 +22,14 @@ class User(BaseModel):
     phone: str = Field(..., example="+22912345678")
     password: str = Field(..., example="securePassword123")
     role: UserRole = Field(..., description="Rôle à choisir dans la liste")
+
+class Entity(BaseModel):
+    raisonSociale: str = Field(..., example="Alteris Solutions")
+    siret: str = Field(..., example="12345678900011")
+    role: UserRole = Field(..., example="entreprise_externe")
+    adresse: Optional[str] = Field(None, example="10 rue de Paris, 75000 Paris")
+    email: EmailStr = Field(..., example="contact@alteris.fr")
+    creeLe: Optional[str] = Field(None, example="2025-01-01")
 
 
 

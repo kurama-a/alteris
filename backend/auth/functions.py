@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Dict
 
 from common import db as database
-from auth.models import UserRole, User, LoginRequest, EmailRequest, PasswordRecoveryRequest
+from auth.models import UserRole, User, Entity, LoginRequest, EmailRequest, PasswordRecoveryRequest
 
 # =====================
 # 🔐 Sécurité & JWT
@@ -152,6 +152,35 @@ async def register_user(user: User) -> Dict:
         "message": "✅ Utilisateur enregistré avec succès",
         "user_id": str(result.inserted_id),
         "role": role
+    }
+
+
+async def register_entity(entity: Entity) -> Dict:
+    """Crée une entité (entreprise_externe, ecole, ...) dans la collection correspondant à son rôle"""
+    role = entity.role.value
+    collection = get_collection_from_role(role)
+
+    existing_entity = await collection.find_one({"email": entity.email})
+    if existing_entity:
+        return JSONResponse(status_code=409, content={"error": "Email déjà utilisé."})
+
+    entity_doc = {
+        "raisonSociale": entity.raisonSociale,
+        "siret": entity.siret,
+        "role": role,
+        "adresse": entity.adresse,
+        "email": entity.email,
+        "creeLe": entity.creeLe,
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+    }
+
+    result = await collection.insert_one(entity_doc)
+
+    return {
+        "message": "✅ Entité enregistrée avec succès",
+        "entity_id": str(result.inserted_id),
+        "role": role,
     }
 
 
