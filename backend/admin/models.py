@@ -21,6 +21,10 @@ class AssocierResponsableCursusRequest(BaseModel):
 class AssocierResponsablePromoRequest(BaseModel):
     promo_annee_academique: str  # Exemple : "E5a", "2024-2025", etc.
     responsable_id: str
+    
+class AssocierMaitreRequest(BaseModel):
+    apprenti_id: str = Field(..., description="ID de l'apprenti à associer")
+    maitre_id: str = Field(..., description="ID du maître d'apprentissage à associer")
 
 class UserUpdateModel(BaseModel):
     first_name: Optional[str] = Field(None, example="Ali")

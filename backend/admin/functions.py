@@ -4,7 +4,6 @@ import common.db as database
 from bson import ObjectId
 from models import UserUpdateModel
 
-
 ROLES_VALIDES = [
     "apprenti",
     "tuteur_pedagogique",
