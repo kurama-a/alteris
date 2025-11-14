@@ -45,10 +45,10 @@ async def get_apprentis_by_annee_academique(annee_academique: str):
 
     return promo_doc
 
-
 async def supprimer_utilisateur_par_role_et_id(role: str, user_id: str):
     """
     Supprime un utilisateur (apprenti, tuteur, etc.) à partir de son rôle et son ID.
+    Nettoie aussi les références associées dans d'autres collections (ex : apprentis).
     """
     if database.db is None:
         raise HTTPException(status_code=500, detail="Connexion DB manquante")
@@ -67,12 +67,32 @@ async def supprimer_utilisateur_par_role_et_id(role: str, user_id: str):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail=f"Aucun utilisateur '{role}' trouvé avec cet ID")
 
+    # 🔄 Nettoyage dans les apprentis où ce profil était référencé
+    apprenti_collection = database.db["users_apprenti"]
+
+    if role == "tuteur_pedagogique":
+        await apprenti_collection.update_many(
+            {"tuteur.tuteur_id": str(object_id)},
+            {"$unset": {"tuteur": ""}}
+        )
+
+    elif role == "coordinatrice":
+        await apprenti_collection.update_many(
+            {"coordinatrice.coordinatrice_id": str(object_id)},
+            {"$unset": {"coordinatrice": ""}}
+        )
+
+    elif role == "responsable_cursus":
+        await apprenti_collection.update_many(
+            {"responsable_cursus.responsable_cursus_id": str(object_id)},
+            {"$unset": {"responsable_cursus": ""}}
+        )
+
     return {
         "message": f"✅ Utilisateur '{role}' supprimé avec succès",
         "deleted_id": user_id,
         "role": role
     }
-
 
 
 async def modifier_utilisateur_par_role_et_id(role: str, user_id: str, updates: dict):
@@ -88,9 +108,8 @@ async def modifier_utilisateur_par_role_et_id(role: str, user_id: str, updates: 
         raise HTTPException(status_code=400, detail="ID invalide")
 
     collection = database.db[f"users_{role}"]
-
-    # ✅ Corrigé ici
     update_dict = {k: v for k, v in updates.items() if v is not None}
+
     if not update_dict:
         raise HTTPException(status_code=400, detail="Aucune donnée à mettre à jour")
 
@@ -101,6 +120,27 @@ async def modifier_utilisateur_par_role_et_id(role: str, user_id: str, updates: 
 
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé ou données identiques")
+
+    # 👇 METTRE À JOUR DANS LES AUTRES COLLECTIONS LIÉES
+    if role == "tuteur_pedagogique":
+        apprenti_collection = database.db["users_apprenti"]
+
+        # Construit le nouvel objet tuteur à insérer dans chaque apprenti
+        updated_tuteur_data = {
+            "tuteur_id": str(object_id),
+            "first_name": updates.get("first_name"),
+            "last_name": updates.get("last_name"),
+            "email": updates.get("email"),
+            "phone": updates.get("phone"),
+        }
+
+        # Met à jour tous les apprentis qui ont ce tuteur
+        await apprenti_collection.update_many(
+            {"tuteur.tuteur_id": str(object_id)},
+            {"$set": {"tuteur": updated_tuteur_data}}
+        )
+
+    # Tu peux faire pareil pour "coordinatrice", "responsable_cursus", etc.
 
     return {
         "message": f"✅ Utilisateur '{role}' modifié avec succès",
