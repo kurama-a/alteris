@@ -8,10 +8,12 @@ import os
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 from typing import Any, Dict, List, Optional
+from bson import ObjectId
 
 from common import db as database
 from auth.models import UserRole, User, LoginRequest, EmailRequest, PasswordRecoveryRequest, Entity
 from auth.role_definitions import ROLE_DEFINITIONS, get_role_definition
+from apprenti.functions import _build_journal_payload
 
 # =====================
 # 🔐 Sécurité & JWT
@@ -175,6 +177,11 @@ DOMAINES_PAR_PROFIL = {
     "responsable_cursus": "cursus.reseaualternance.fr"
 }
 
+APPRENTICE_LINK_FIELDS = {
+    "tuteur_pedagogique": "tuteur.tuteur_id",
+    "maitre_apprentissage": "maitre.maitre_id",
+}
+
 # ------------------------
 # Helpers DB / rôle
 # ------------------------
@@ -188,6 +195,29 @@ def get_collection_from_role(role: str):
     if database.db is None:
         raise HTTPException(status_code=500, detail="DB non initialisée")
     return database.db[get_collection_name_by_role(role)]
+
+
+async def fetch_supervised_apprentices(role: str, supervisor_id: ObjectId | str | None) -> List[Dict[str, Any]]:
+    if database.db is None or supervisor_id is None:
+        return []
+    link_field = APPRENTICE_LINK_FIELDS.get(role)
+    if not link_field:
+        return []
+
+    apprenti_collection = database.db["users_apprenti"]
+    cursor = apprenti_collection.find({link_field: str(supervisor_id)})
+    apprentices: List[Dict[str, Any]] = []
+    async for apprenti in cursor:
+        apprentices.append(_build_journal_payload(apprenti))
+    return apprentices
+
+
+async def enrich_me_with_apprentices(me: Dict[str, Any], role: str, user: Dict[str, Any]):
+    apprentices = await fetch_supervised_apprentices(role, user.get("_id"))
+    if apprentices:
+        me["apprentices"] = apprentices
+    elif "apprentices" in me:
+        me.pop("apprentices", None)
 
 
 # ------------------------
@@ -281,6 +311,8 @@ async def login_user(req: LoginRequest) -> Dict:
             if not me.get("email"):
                 raise HTTPException(status_code=500, detail="Email utilisateur manquant")
 
+            await enrich_me_with_apprentices(me, role, user)
+
             access_token = create_access_token(
                 {
                     "sub": me["email"],
@@ -322,6 +354,7 @@ async def get_current_user(token: str) -> Dict:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
 
     me = build_me_from_document(user, role)
+    await enrich_me_with_apprentices(me, role, user)
     return {"me": me}
 
 
