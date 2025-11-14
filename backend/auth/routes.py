@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import JSONResponse
 
-from auth.models import User, EmailRequest, PasswordRecoveryRequest, LoginRequest
+from auth.models import User, Entity, EmailRequest, PasswordRecoveryRequest, LoginRequest
 import auth.functions as functions
 
 auth_api = APIRouter(tags=["Auth"])
@@ -19,6 +19,12 @@ async def register(user: User):
 async def login(req: LoginRequest):
     """Route légère : délègue la logique à functions.login_user"""
     return await functions.login_user(req)
+
+
+@auth_api.post("/register-entity", summary="Créer une nouvelle entité (entreprise_externe, ecole, ...)")
+async def register_entity(entity: Entity):
+    """Route légère : délègue la logique à functions.register_entity"""
+    return await functions.register_entity(entity)
 
 
 @auth_api.get("/me", summary="Récupérer le profil depuis le token")
