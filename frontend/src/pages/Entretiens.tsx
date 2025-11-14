@@ -32,14 +32,56 @@ type CreateEntretienResponse = {
   entretien: Entretien;
 };
 
+type SelectableApprentice = {
+  id: string;
+  fullName: string;
+  email: string;
+};
+
 export default function Entretiens() {
   const { me, token } = useAuth();
   const canSchedule = useCan("meeting:schedule:own");
-  const apprentiId = me?.id;
+  const isApprentice =
+    me.role === "apprenti" || (Array.isArray(me.roles) && me.roles.includes("apprenti"));
+  const selfApprenticeOption: SelectableApprentice | null = isApprentice
+    ? {
+        id: me.id,
+        fullName: me.fullName,
+        email: me.email,
+      }
+    : null;
+  const supervisedApprentices = Array.isArray(me.apprentices) ? me.apprentices : [];
+  const supervisedOptions = React.useMemo<SelectableApprentice[]>(() => {
+    return supervisedApprentices
+      .map((apprentice) => ({
+        id: apprentice.id,
+        fullName: apprentice.fullName,
+        email: apprentice.email,
+      }))
+      .filter(
+        (candidate): candidate is SelectableApprentice =>
+          Boolean(candidate.id && candidate.fullName && candidate.email)
+      );
+  }, [supervisedApprentices]);
+  const availableApprentices = React.useMemo<SelectableApprentice[]>(() => {
+    const map = new Map<string, SelectableApprentice>();
+    if (selfApprenticeOption) {
+      map.set(selfApprenticeOption.id, selfApprenticeOption);
+    }
+    supervisedOptions.forEach((apprentice) => {
+      map.set(apprentice.id, apprentice);
+    });
+    return Array.from(map.values()).sort((a, b) =>
+      a.fullName.localeCompare(b.fullName, "fr", { sensitivity: "base" })
+    );
+  }, [selfApprenticeOption, supervisedOptions]);
 
   const [entretiens, setEntretiens] = React.useState<Entretien[]>([]);
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [selectedApprenticeId, setSelectedApprenticeId] = React.useState<string | null>(() =>
+    selfApprenticeOption?.id ?? availableApprentices[0]?.id ?? null
+  );
 
   const [isFormVisible, setIsFormVisible] = React.useState<boolean>(false);
   const [formValues, setFormValues] = React.useState<{ sujet: string; dateTime: string }>({
@@ -51,8 +93,36 @@ export default function Entretiens() {
 
   const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null);
 
+  const canModifySelected = canSchedule && selectedApprenticeId === me.id;
+
   React.useEffect(() => {
-    if (!token || !apprentiId) {
+    if (!availableApprentices.length) {
+      setSelectedApprenticeId(selfApprenticeOption?.id ?? null);
+      return;
+    }
+    if (
+      selectedApprenticeId &&
+      availableApprentices.some((candidate) => candidate.id === selectedApprenticeId)
+    ) {
+      return;
+    }
+    setSelectedApprenticeId(availableApprentices[0]?.id ?? selfApprenticeOption?.id ?? null);
+  }, [availableApprentices, selectedApprenticeId, selfApprenticeOption]);
+
+  React.useEffect(() => {
+    setIsFormVisible(false);
+    setFormError(null);
+  }, [selectedApprenticeId]);
+
+  React.useEffect(() => {
+    if (!token || !selectedApprenticeId) {
+      setEntretiens([]);
+      setIsLoading(false);
+      setError(
+        availableApprentices.length
+          ? "Selectionnez un apprenti pour afficher ses entretiens."
+          : "Aucun apprenti n'est associé à votre profil."
+      );
       return;
     }
 
@@ -60,7 +130,9 @@ export default function Entretiens() {
     setIsLoading(true);
     setError(null);
 
-    fetchJson<ApprentiInfosResponse>(`${APPRENTI_API_URL}/infos-completes/${apprentiId}`, { token })
+    fetchJson<ApprentiInfosResponse>(`${APPRENTI_API_URL}/infos-completes/${selectedApprenticeId}`, {
+      token,
+    })
       .then((payload) => {
         if (cancelled) return;
         const next = payload.data?.entretiens ?? [];
@@ -80,7 +152,7 @@ export default function Entretiens() {
     return () => {
       cancelled = true;
     };
-  }, [apprentiId, token]);
+  }, [availableApprentices, selectedApprenticeId, token]);
 
   const sortedEntretiens = React.useMemo(() => {
     return [...entretiens].sort((a, b) => {
@@ -100,7 +172,11 @@ export default function Entretiens() {
 
   const handleCreate = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!token || !apprentiId) return;
+    if (!token || !selectedApprenticeId) return;
+    if (!canModifySelected) {
+      setFormError("Vous ne pouvez créer un entretien que pour votre propre profil.");
+      return;
+    }
 
     if (!formValues.sujet.trim() || !formValues.dateTime) {
       setFormError("Merci de renseigner la date et le sujet de l'entretien.");
@@ -117,7 +193,7 @@ export default function Entretiens() {
         method: "POST",
         token,
         body: JSON.stringify({
-          apprenti_id: apprentiId,
+          apprenti_id: selectedApprenticeId,
           date: isoDate,
           sujet: formValues.sujet.trim(),
         }),
@@ -134,12 +210,12 @@ export default function Entretiens() {
   };
 
   const handleDelete = async (entretienId: string) => {
-    if (!token || !apprentiId) return;
+    if (!token || !selectedApprenticeId || !canModifySelected) return;
     setPendingDeleteId(entretienId);
     setError(null);
 
     try {
-      await fetchJson(`${APPRENTI_API_URL}/entretien/${apprentiId}/${entretienId}`, {
+      await fetchJson(`${APPRENTI_API_URL}/entretien/${selectedApprenticeId}/${entretienId}`, {
         method: "DELETE",
         token,
       });
@@ -178,6 +254,10 @@ export default function Entretiens() {
     );
   };
 
+  const selectedApprentice = availableApprentices.find(
+    (apprentice) => apprentice.id === selectedApprenticeId
+  );
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <div
@@ -195,7 +275,7 @@ export default function Entretiens() {
             Planifiez vos échanges et retrouvez toutes les informations associées à vos tuteurs.
           </p>
         </div>
-        {canSchedule && (
+        {canModifySelected && (
           <button
             type="button"
             onClick={() => setIsFormVisible(true)}
@@ -214,7 +294,43 @@ export default function Entretiens() {
         )}
       </div>
 
-      {isFormVisible && canSchedule && (
+      <div
+        style={{
+          border: "1px solid #e2e8f0",
+          borderRadius: 12,
+          padding: 16,
+          background: "#fff",
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
+        <label style={{ fontWeight: 600 }}>Apprenti suivi</label>
+        {availableApprentices.length ? (
+          <select
+            value={selectedApprenticeId ?? ""}
+            onChange={(event) => setSelectedApprenticeId(event.target.value || null)}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 8,
+              border: "1px solid #cbd5f5",
+              maxWidth: 360,
+            }}
+          >
+            {availableApprentices.map((apprentice) => (
+              <option key={apprentice.id} value={apprentice.id}>
+                {apprentice.fullName} — {apprentice.email}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <p style={{ margin: 0, color: "#475569" }}>
+            Aucun apprenti n'est rattaché à votre profil pour le moment.
+          </p>
+        )}
+      </div>
+
+      {isFormVisible && canModifySelected && (
         <form
           onSubmit={handleCreate}
           style={{
@@ -302,9 +418,7 @@ export default function Entretiens() {
         </div>
       )}
 
-      {isLoading ? (
-        <p>Chargement des entretiens...</p>
-      ) : sortedEntretiens.length === 0 ? (
+      {selectedApprentice && !isLoading && entretiens.length === 0 && !error ? (
         <div
           style={{
             border: "1px dashed #cbd5f5",
@@ -315,9 +429,11 @@ export default function Entretiens() {
             color: "#475569",
           }}
         >
-          Aucun entretien n'a encore été planifié.
+          Aucun entretien n'a encore été planifié pour {selectedApprentice.fullName}.
         </div>
-      ) : (
+      ) : isLoading ? (
+        <p>Chargement des entretiens...</p>
+      ) : sortedEntretiens.length > 0 ? (
         <div
           style={{
             display: "grid",
@@ -346,7 +462,7 @@ export default function Entretiens() {
                   </p>
                   <h3 style={{ margin: "4px 0 0", fontSize: 18 }}>{entretien.sujet}</h3>
                 </div>
-                {canSchedule && (
+                {canModifySelected && (
                   <button
                     type="button"
                     onClick={() => handleDelete(entretien.entretien_id)}
@@ -371,7 +487,7 @@ export default function Entretiens() {
             </article>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
