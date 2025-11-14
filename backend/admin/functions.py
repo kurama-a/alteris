@@ -108,3 +108,5 @@ async def modifier_utilisateur_par_role_et_id(role: str, user_id: str, updates: 
         "role": role,
         "updates_applied": update_dict
     }
+
+
