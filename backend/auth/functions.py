@@ -171,7 +171,7 @@ DOMAINES_PAR_PROFIL = {
     "tuteur_pedagogique": "tuteurs.reseaualternance.fr",
     "maitre_apprentissage": "maitre.reseaualternance.fr",
     "coordinatrice": "coordination.reseaualternance.fr",
-    "entreprise_externe": "entreprise.reseaualternance.fr",
+    "entreprise": "entreprise.reseaualternance.fr",
     "responsable_cursus": "cursus.reseaualternance.fr"
 }
 

@@ -174,6 +174,12 @@ async def recuperer_infos_apprenti_completes(apprenti_id: str):
         for role in ROLES_VALIDES:
             infos[role] = apprenti.get(role, None)
 
+        entretiens = apprenti.get("entretiens") or []
+        infos["entretiens"] = sorted(
+            entretiens,
+            key=lambda item: item.get("date") or "",
+            reverse=True,
+        )
         infos["journal"] = _build_journal_payload(apprenti)
 
         return {

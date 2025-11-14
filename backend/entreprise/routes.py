@@ -1,17 +1,36 @@
-from entreprise.models import HealthResponse, Entity
-import common.db as database   # ← importer le module complet
-from fastapi import APIRouter, HTTPException
-from bson import ObjectId
-from functions import recuperer_infos_entreprise_completes
+from fastapi import APIRouter
+
+from entreprise.models import Entity, EntityUpdate, HealthResponse
+from functions import (
+    creer_entreprise,
+    mettre_a_jour_entreprise,
+    recuperer_infos_entreprise_completes,
+    supprimer_entreprise,
+)
+
 entreprise_api = APIRouter(tags=["Entreprise"])
+
 
 @entreprise_api.get("/health", response_model=HealthResponse, tags=["System"])
 def health():
-    return {"status": "ok", "service": "entreprise_externe"}
+    return {"status": "ok", "service": "entreprise"}
 
-# (suppression de /info et /status, garder uniquement /health)
 
-# ✅ Infos complètes
-@entreprise_api.get("/infos-completes/{entreprise_id}", tags=["Entreprise Externe"])
+@entreprise_api.get("/infos-completes/{entreprise_id}", tags=["Entreprise"])
 async def get_entreprise_infos_completes(entreprise_id: str):
     return await recuperer_infos_entreprise_completes(entreprise_id)
+
+
+@entreprise_api.post("/", tags=["Entreprise"])
+async def create_entreprise(payload: Entity):
+    return await creer_entreprise(payload)
+
+
+@entreprise_api.put("/{entreprise_id}", tags=["Entreprise"])
+async def update_entreprise(entreprise_id: str, payload: EntityUpdate):
+    return await mettre_a_jour_entreprise(entreprise_id, payload)
+
+
+@entreprise_api.delete("/{entreprise_id}", tags=["Entreprise"])
+async def delete_entreprise(entreprise_id: str):
+    return await supprimer_entreprise(entreprise_id)

@@ -9,7 +9,7 @@ class UserRole(str, Enum):
     responsable_cursus = "responsable_cursus"
     maitre_apprentissage = "maitre_apprentissage"
     tuteur_pedagogique = "tuteur_pedagogique"
-    entreprise_externe = "entreprise_externe"
+    entreprise = "entreprise"
     admin = "administrateur"
 
 # ✅ Schéma de requête

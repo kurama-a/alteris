@@ -41,7 +41,7 @@ const ROLE_OPTIONS: RoleOption[] = [
   { value: "tuteur_pedagogique", label: "Tuteur pédagogique" },
   { value: "maitre_apprentissage", label: "Maître d'apprentissage" },
   { value: "coordinatrice", label: "Coordinatrice d'apprentissage" },
-  { value: "entreprise_externe", label: "Entreprise partenaire" },
+  { value: "entreprise", label: "Entreprise partenaire" },
   { value: "responsable_cursus", label: "Responsable du cursus" },
   { value: "jury", label: "Professeur jury ESEO" },
   { value: "admin", label: "Administrateur" },

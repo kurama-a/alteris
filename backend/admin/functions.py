@@ -10,10 +10,38 @@ ROLES_VALIDES = [
     "maitre_apprentissage",
     "coordinatrice",
     "responsable_cursus",
-    "entreprise_externe",
+    "entreprise",
     "jury",
     "admin",
 ]
+
+ROLE_REFERENCES = {
+    "tuteur_pedagogique": {
+        "apprenti_field": "tuteur",
+        "id_field": "tuteur_id",
+        "entretien_field": "tuteur",
+    },
+    "maitre_apprentissage": {
+        "apprenti_field": "maitre",
+        "id_field": "maitre_id",
+        "entretien_field": "maitre",
+    },
+    "coordinatrice": {
+        "apprenti_field": "coordinatrice",
+        "id_field": "coordinatrice_id",
+    },
+    "responsable_cursus": {
+        "apprenti_field": "responsable_cursus",
+        "id_field": "responsable_cursus_id",
+    },
+}
+
+ROLE_REFERENCES = {
+    "tuteur_pedagogique": {"apprenti_field": "tuteur", "id_field": "tuteur_id"},
+    "maitre_apprentissage": {"apprenti_field": "maitre", "id_field": "maitre_id"},
+    "coordinatrice": {"apprenti_field": "coordinatrice", "id_field": "coordinatrice_id"},
+    "responsable_cursus": {"apprenti_field": "responsable_cursus", "id_field": "responsable_cursus_id"},
+}
 
 async def get_apprentis_by_annee_academique(annee_academique: str):
     if database.db is None:
@@ -155,26 +183,39 @@ async def modifier_utilisateur_par_role_et_id(role: str, user_id: str, updates: 
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé ou données identiques")
 
-    # 👇 METTRE À JOUR DANS LES AUTRES COLLECTIONS LIÉES
-    if role == "tuteur_pedagogique":
-        apprenti_collection = database.db["users_apprenti"]
+    updated_document = await collection.find_one({"_id": object_id})
 
-        # Construit le nouvel objet tuteur à insérer dans chaque apprenti
-        updated_tuteur_data = {
-            "tuteur_id": str(object_id),
-            "first_name": updates.get("first_name"),
-            "last_name": updates.get("last_name"),
-            "email": updates.get("email"),
-            "phone": updates.get("phone"),
+    reference_config = ROLE_REFERENCES.get(role)
+    if reference_config and updated_document:
+        apprenti_collection = database.db["users_apprenti"]
+        apprenti_field = reference_config["apprenti_field"]
+        id_field = reference_config["id_field"]
+        reference_data = {
+            id_field: str(object_id),
+            "first_name": updated_document.get("first_name"),
+            "last_name": updated_document.get("last_name"),
+            "email": updated_document.get("email"),
+            "phone": updated_document.get("phone"),
         }
 
-        # Met à jour tous les apprentis qui ont ce tuteur
         await apprenti_collection.update_many(
-            {"tuteur.tuteur_id": str(object_id)},
-            {"$set": {"tuteur": updated_tuteur_data}}
+            {f"{apprenti_field}.{id_field}": str(object_id)},
+            {"$set": {apprenti_field: reference_data}}
         )
 
-    # Tu peux faire pareil pour "coordinatrice", "responsable_cursus", etc.
+        entretien_field = reference_config.get("entretien_field")
+        if entretien_field:
+            await apprenti_collection.update_many(
+                {f"entretiens.{entretien_field}.{id_field}": str(object_id)},
+                {
+                    "$set": {
+                        f"entretiens.$[entretien].{entretien_field}": reference_data
+                    }
+                },
+                array_filters=[
+                    {f"entretien.{entretien_field}.{id_field}": str(object_id)}
+                ],
+            )
 
     return {
         "message": f"✅ Utilisateur '{role}' modifié avec succès",
@@ -182,3 +223,4 @@ async def modifier_utilisateur_par_role_et_id(role: str, user_id: str, updates: 
         "role": role,
         "updates_applied": update_dict
     }
+

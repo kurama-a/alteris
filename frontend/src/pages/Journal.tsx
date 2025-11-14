@@ -177,8 +177,8 @@ export default function Journal() {
       currentTutors.enterprisePrimary
         ? { key: "maitre-apprentissage", tutor: currentTutors.enterprisePrimary }
         : null,
-      currentTutors.pedagogic
-        ? { key: "tuteur-pedagogique", tutor: currentTutors.pedagogic }
+      currentTutors.enterpriseSecondary
+        ? { key: "tuteur-pedagogique", tutor: currentTutors.enterpriseSecondary }
         : null,
     ].filter(Boolean) as { key: string; tutor: TutorInfo }[];
     return cards;

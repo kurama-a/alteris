@@ -21,7 +21,7 @@ async def login(req: LoginRequest):
     return await functions.login_user(req)
 
 
-@auth_api.post("/register-entity", summary="Créer une nouvelle entité (entreprise_externe, ecole, ...)")
+@auth_api.post("/register-entity", summary="Créer une nouvelle entité (entreprise, ecole, ...)")
 async def register_entity(entity: Entity):
     """Route légère : délègue la logique à functions.register_entity"""
     return await functions.register_entity(entity)

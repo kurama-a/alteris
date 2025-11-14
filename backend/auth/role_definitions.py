@@ -58,7 +58,7 @@ ROLE_DEFINITIONS: Dict[str, RoleDefinition] = {
             "meeting:schedule:team",
         ],
     },
-    "entreprise_externe": {
+    "entreprise": {
         "roles": ["Entreprise partenaire"],
         "role_label": "Entreprise partenaire",
         "perms": [
