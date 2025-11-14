@@ -1,13 +1,133 @@
 import React from "react";
 import { useAuth } from "../auth/Permissions";
 import type { UserSummary } from "../auth/Permissions";
-import { AUTH_API_URL, fetchJson } from "../config";
+import { AUTH_API_URL, ADMIN_API_URL, fetchJson } from "../config";
 
-type EditableUser = UserSummary;
+type EditableUser = UserSummary & {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+};
 
 type UsersResponse = {
   users: UserSummary[];
 };
+
+type RoleOption = {
+  value: string;
+  label: string;
+};
+
+type CreateUserDraft = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  anneeAcademique: string;
+  password: string;
+  role: string;
+};
+
+function normalizeRoleLabel(label?: string): string {
+  return (label ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+const ROLE_OPTIONS: RoleOption[] = [
+  { value: "apprenti", label: "Apprentie" },
+  { value: "tuteur_pedagogique", label: "Tuteur pédagogique" },
+  { value: "maitre_apprentissage", label: "Maître d'apprentissage" },
+  { value: "coordinatrice", label: "Coordinatrice d'apprentissage" },
+  { value: "entreprise_externe", label: "Entreprise partenaire" },
+  { value: "responsable_cursus", label: "Responsable du cursus" },
+  { value: "jury", label: "Professeur jury ESEO" },
+  { value: "admin", label: "Administrateur" },
+];
+
+const ROLE_VALUE_TO_OPTION = ROLE_OPTIONS.reduce<Record<string, RoleOption>>((acc, option) => {
+  acc[option.value] = option;
+  return acc;
+}, {});
+
+const ROLE_LABEL_TO_VALUE = ROLE_OPTIONS.reduce<Record<string, string>>((acc, option) => {
+  const normalized = normalizeRoleLabel(option.label);
+  acc[normalized] = option.value;
+  return acc;
+}, {});
+
+const DEFAULT_ROLE_VALUE = ROLE_OPTIONS[0]?.value ?? "apprenti";
+
+const createUserTemplate = (): CreateUserDraft => ({
+  firstName: "",
+  lastName: "",
+  email: "",
+  phone: "",
+  anneeAcademique: "",
+  password: "",
+  role: DEFAULT_ROLE_VALUE,
+});
+
+function inferRoleFromSummary(user: UserSummary): string | undefined {
+  if (user.role) {
+    return user.role;
+  }
+
+  const directMatch = ROLE_LABEL_TO_VALUE[normalizeRoleLabel(user.roleLabel)];
+  if (directMatch) {
+    return directMatch;
+  }
+
+  if (Array.isArray(user.roles)) {
+    for (const candidate of user.roles) {
+      const match = ROLE_LABEL_TO_VALUE[normalizeRoleLabel(candidate)];
+      if (match) {
+        return match;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function splitFullName(fullName?: string): { firstName?: string; lastName?: string } {
+  if (!fullName) {
+    return {};
+  }
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 0) {
+    return {};
+  }
+  const firstName = parts.shift() ?? "";
+  const lastName = parts.join(" ");
+  return {
+    firstName,
+    lastName: lastName || undefined,
+  };
+}
+
+function buildUpdatePayloadFromDraft(draft: EditableUser, fallbackRole: string) {
+  const payload: Record<string, unknown> = {};
+  const assign = (key: string, value: unknown) => {
+    if (value !== undefined) {
+      payload[key] = value;
+    }
+  };
+
+  assign("first_name", draft.firstName);
+  assign("last_name", draft.lastName);
+  assign("fullName", `${draft.firstName ?? ""} ${draft.lastName ?? ""}`.trim() || draft.fullName);
+  assign("email", draft.email);
+  assign("phone", draft.phone);
+  assign("role", draft.role ?? fallbackRole);
+  assign("roles", draft.roles);
+  assign("roleLabel", draft.roleLabel);
+  assign("perms", draft.perms);
+
+  return payload;
+}
 
 const modalBackdropStyle: React.CSSProperties = {
   position: "fixed",
@@ -45,7 +165,11 @@ function Modal({
       <div style={modalContainerStyle}>
         <header style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h2 style={{ margin: 0, fontSize: 20 }}>{title}</h2>
-          <button onClick={onClose} style={{ border: "none", background: "transparent", fontSize: 18, cursor: "pointer" }} aria-label="Fermer">
+          <button
+            onClick={onClose}
+            style={{ border: "none", background: "transparent", fontSize: 18, cursor: "pointer" }}
+            aria-label="Fermer"
+          >
             ×
           </button>
         </header>
@@ -65,7 +189,29 @@ export default function Admin() {
   const [isFetching, setIsFetching] = React.useState(false);
   const [fetchError, setFetchError] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
+  const [actionError, setActionError] = React.useState<string | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
+  const [createDraft, setCreateDraft] = React.useState<CreateUserDraft>(() => createUserTemplate());
+  const [isCreatingUser, setIsCreatingUser] = React.useState(false);
+
+  const mapUserToEditable = React.useCallback(
+    (user: UserSummary): EditableUser => {
+      const inferredRole = inferRoleFromSummary(user);
+      const nameParts = splitFullName(user.fullName);
+      return {
+        ...user,
+        role: user.role ?? inferredRole,
+        firstName: user.firstName ?? nameParts.firstName,
+        lastName: user.lastName ?? nameParts.lastName,
+        phone: user.phone ?? "",
+      };
+    },
+    []
+  );
+
+  const refreshUsers = React.useCallback(async () => {
     if (!token) {
       setUsers([]);
       setSelectedIds([]);
@@ -74,41 +220,32 @@ export default function Admin() {
       return;
     }
 
-    let cancelled = false;
     setIsFetching(true);
     setFetchError(null);
+    try {
+      const payload = await fetchJson<UsersResponse>(`${AUTH_API_URL}/users`, { token });
+      const nextUsers = payload.users.map(mapUserToEditable);
+      setUsers(nextUsers);
+      setSelectedIds((current) =>
+        current.filter((id) => nextUsers.some((candidate) => candidate.id === id))
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Impossible de recuperer les utilisateurs.";
+      setFetchError(message);
+      setUsers([]);
+      setSelectedIds([]);
+    } finally {
+      setIsFetching(false);
+    }
+  }, [token, mapUserToEditable]);
 
-    fetchJson<UsersResponse>(`${AUTH_API_URL}/users`, { token })
-      .then((payload) => {
-        if (cancelled) return;
-        const nextUsers = payload.users;
-        setUsers(nextUsers);
-        setSelectedIds((current) =>
-          current.filter((id) => nextUsers.some((candidate) => candidate.id === id))
-        );
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Impossible de recuperer les utilisateurs.";
-        setFetchError(message);
-        setUsers([]);
-        setSelectedIds([]);
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsFetching(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
+  React.useEffect(() => {
+    refreshUsers();
+  }, [refreshUsers]);
 
   const isAllSelected = users.length > 0 && selectedIds.length === users.length;
+  const hasSelection = selectedIds.length > 0;
 
   const toggleSelect = React.useCallback(
     (id: string) => {
@@ -124,8 +261,16 @@ export default function Admin() {
   }, [users]);
 
   const beginEdit = React.useCallback((user: EditableUser) => {
+    const names = splitFullName(user.fullName);
+    setActionError(null);
     setEditUser(user);
-    setEditDraft({ ...user, perms: [...user.perms] });
+    setEditDraft({
+      ...user,
+      perms: [...user.perms],
+      firstName: user.firstName ?? names.firstName ?? "",
+      lastName: user.lastName ?? names.lastName ?? "",
+      phone: user.phone ?? "",
+    });
   }, []);
 
   const closeEditModal = React.useCallback(() => {
@@ -140,20 +285,56 @@ export default function Admin() {
         if (key === "perms") {
           return { ...current, perms: value.split(",").map((item) => item.trim()).filter(Boolean) };
         }
+        if (key === "role") {
+          const option = ROLE_VALUE_TO_OPTION[value];
+          return {
+            ...current,
+            role: value,
+            roleLabel: option?.label ?? current.roleLabel,
+            roles: option ? [option.label] : current.roles,
+          };
+        }
         return { ...current, [key]: value };
       });
     },
     []
   );
 
-  const saveEdit = React.useCallback(() => {
-    if (!editDraft) return;
-    setUsers((current) => current.map((candidate) => (candidate.id === editDraft.id ? editDraft : candidate)));
-    setSelectedIds((current) => (current.includes(editDraft.id) ? current : current));
-    closeEditModal();
-  }, [editDraft, closeEditModal]);
+  const saveEdit = React.useCallback(async () => {
+    if (!editDraft || !editUser) return;
+    if (!token) {
+      setActionError("Authentification requise pour modifier un utilisateur.");
+      return;
+    }
+
+    const roleForRoute = editUser.role ?? editDraft.role;
+    if (!roleForRoute) {
+      setActionError("Rôle introuvable pour cet utilisateur.");
+      return;
+    }
+
+    setIsSavingEdit(true);
+    setActionError(null);
+    try {
+      const body = buildUpdatePayloadFromDraft(editDraft, roleForRoute);
+      await fetchJson(`${ADMIN_API_URL}/user/${roleForRoute}/${editDraft.id}`, {
+        method: "PUT",
+        token,
+        body: JSON.stringify(body),
+      });
+      closeEditModal();
+      await refreshUsers();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "La modification a échoué.";
+      setActionError(message);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  }, [editDraft, editUser, token, closeEditModal, refreshUsers]);
 
   const requestDelete = React.useCallback((ids: string[]) => {
+    setActionError(null);
     setDeleteIds(ids);
   }, []);
 
@@ -161,18 +342,109 @@ export default function Admin() {
     setDeleteIds([]);
   }, []);
 
-  const confirmDelete = React.useCallback(() => {
+  const confirmDelete = React.useCallback(async () => {
     if (deleteIds.length === 0) return;
-    setUsers((current) => current.filter((user) => !deleteIds.includes(user.id)));
-    setSelectedIds((current) => current.filter((id) => !deleteIds.includes(id)));
-    closeDeleteModal();
-  }, [deleteIds, closeDeleteModal]);
+    if (!token) {
+      setActionError("Authentification requise pour supprimer un utilisateur.");
+      return;
+    }
+
+    setIsDeleting(true);
+    setActionError(null);
+    try {
+      await Promise.all(
+        deleteIds.map(async (id) => {
+          const target = users.find((candidate) => candidate.id === id);
+          if (!target?.role) {
+            throw new Error("Rôle introuvable pour un utilisateur sélectionné.");
+          }
+          await fetchJson(`${ADMIN_API_URL}/user/${target.role}/${id}`, {
+            method: "DELETE",
+            token,
+          });
+        })
+      );
+      closeDeleteModal();
+      await refreshUsers();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "La suppression a échoué.";
+      setActionError(message);
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [deleteIds, token, users, closeDeleteModal, refreshUsers]);
+
+  const openCreateModal = React.useCallback(() => {
+    setCreateDraft(createUserTemplate());
+    setIsCreateModalOpen(true);
+    setActionError(null);
+  }, []);
+
+  const closeCreateModal = React.useCallback(() => {
+    setIsCreateModalOpen(false);
+  }, []);
+
+  const handleCreateChange = React.useCallback(
+    (key: keyof CreateUserDraft, value: string) => {
+      setCreateDraft((current) => ({ ...current, [key]: value }));
+    },
+    []
+  );
+
+  const submitCreate = React.useCallback(async () => {
+    if (!token) {
+      setActionError("Authentification requise pour créer un utilisateur.");
+      return;
+    }
+
+    setIsCreatingUser(true);
+    setActionError(null);
+    try {
+      await fetchJson(`${AUTH_API_URL}/register`, {
+        method: "POST",
+        token,
+        body: JSON.stringify({
+          first_name: createDraft.firstName,
+          last_name: createDraft.lastName,
+          email: createDraft.email,
+          phone: createDraft.phone,
+          annee_academique: createDraft.anneeAcademique,
+          password: createDraft.password,
+          role: createDraft.role,
+        }),
+      });
+      closeCreateModal();
+      await refreshUsers();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "La création a échoué.";
+      setActionError(message);
+    } finally {
+      setIsCreatingUser(false);
+    }
+  }, [token, createDraft, closeCreateModal, refreshUsers]);
 
   const renderPerms = (perms: string[]) => perms.join(", ");
 
   return (
     <div style={{ padding: "32px 40px" }}>
-      <h1 style={{ fontSize: 28, margin: "0 0 24px" }}>Administration</h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <h1 style={{ fontSize: 28, margin: 0 }}>Administration</h1>
+        <button
+          onClick={openCreateModal}
+          style={{
+            padding: "10px 18px",
+            borderRadius: 6,
+            border: "1px solid #16a34a",
+            background: "#16a34a",
+            color: "#fff",
+            cursor: "pointer",
+          }}
+        >
+          Ajouter un utilisateur
+        </button>
+      </div>
 
       {fetchError ? (
         <div
@@ -185,6 +457,20 @@ export default function Admin() {
           }}
         >
           {fetchError}
+        </div>
+      ) : null}
+
+      {actionError ? (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "12px 16px",
+            borderRadius: 8,
+            background: "#fef3c7",
+            color: "#b45309",
+          }}
+        >
+          {actionError}
         </div>
       ) : null}
 
@@ -286,6 +572,123 @@ export default function Admin() {
         </table>
       </div>
 
+      {isCreateModalOpen && (
+        <Modal title="Ajouter un utilisateur" onClose={closeCreateModal}>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              submitCreate();
+            }}
+            style={{ display: "flex", flexDirection: "column", gap: 16 }}
+          >
+            <div style={{ display: "flex", gap: 12 }}>
+              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                <span>Prénom</span>
+                <input
+                  type="text"
+                  value={createDraft.firstName}
+                  onChange={(event) => handleCreateChange("firstName", event.target.value)}
+                  style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                  required
+                />
+              </label>
+              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                <span>Nom</span>
+                <input
+                  type="text"
+                  value={createDraft.lastName}
+                  onChange={(event) => handleCreateChange("lastName", event.target.value)}
+                  style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                  required
+                />
+              </label>
+            </div>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span>Email</span>
+              <input
+                type="email"
+                value={createDraft.email}
+                onChange={(event) => handleCreateChange("email", event.target.value)}
+                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                required
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span>Téléphone</span>
+              <input
+                type="tel"
+                value={createDraft.phone}
+                onChange={(event) => handleCreateChange("phone", event.target.value)}
+                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span>Année académique</span>
+              <input
+                type="text"
+                value={createDraft.anneeAcademique}
+                onChange={(event) => handleCreateChange("anneeAcademique", event.target.value)}
+                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                required
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span>Mot de passe</span>
+              <input
+                type="password"
+                value={createDraft.password}
+                onChange={(event) => handleCreateChange("password", event.target.value)}
+                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                required
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span>Rôle</span>
+              <select
+                value={createDraft.role}
+                onChange={(event) => handleCreateChange("role", event.target.value)}
+                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+              >
+                {ROLE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+              <button
+                type="button"
+                onClick={closeCreateModal}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: 6,
+                  border: "1px solid #cbd5f5",
+                  background: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                type="submit"
+                disabled={isCreatingUser}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: 6,
+                  border: "1px solid #16a34a",
+                  background: isCreatingUser ? "#86efac" : "#16a34a",
+                  color: "#fff",
+                  cursor: isCreatingUser ? "wait" : "pointer",
+                }}
+              >
+                {isCreatingUser ? "Création..." : "Créer"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
       {editUser && editDraft && (
         <Modal title={`Modifier ${editUser.fullName}`} onClose={closeEditModal}>
           <form
@@ -295,16 +698,28 @@ export default function Admin() {
             }}
             style={{ display: "flex", flexDirection: "column", gap: 16 }}
           >
-            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span>Nom complet</span>
-              <input
-                type="text"
-                value={editDraft.fullName}
-                onChange={(event) => handleEditChange("fullName", event.target.value)}
-                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
-                required
-              />
-            </label>
+            <div style={{ display: "flex", gap: 12 }}>
+              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                <span>Prénom</span>
+                <input
+                  type="text"
+                  value={editDraft.firstName ?? ""}
+                  onChange={(event) => handleEditChange("firstName", event.target.value)}
+                  style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                  required
+                />
+              </label>
+              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                <span>Nom</span>
+                <input
+                  type="text"
+                  value={editDraft.lastName ?? ""}
+                  onChange={(event) => handleEditChange("lastName", event.target.value)}
+                  style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                  required
+                />
+              </label>
+            </div>
             <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <span>Email</span>
               <input
@@ -316,23 +731,27 @@ export default function Admin() {
               />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span>Rôle</span>
+              <span>Téléphone</span>
               <input
-                type="text"
-                value={editDraft.roleLabel}
-                onChange={(event) => handleEditChange("roleLabel", event.target.value)}
+                type="tel"
+                value={editDraft.phone ?? ""}
+                onChange={(event) => handleEditChange("phone", event.target.value)}
                 style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
-                required
               />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span>Permissions (séparées par des virgules)</span>
-              <input
-                type="text"
-                value={editDraft.perms.join(", ")}
-                onChange={(event) => handleEditChange("perms", event.target.value)}
+              <span>Rôle</span>
+              <select
+                value={editDraft.role ?? ""}
+                onChange={(event) => handleEditChange("role", event.target.value)}
                 style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
-              />
+              >
+                {ROLE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
               <button
@@ -350,16 +769,17 @@ export default function Admin() {
               </button>
               <button
                 type="submit"
+                disabled={isSavingEdit}
                 style={{
                   padding: "10px 16px",
                   borderRadius: 6,
                   border: "1px solid #2563eb",
-                  background: "#2563eb",
+                  background: isSavingEdit ? "#93c5fd" : "#2563eb",
                   color: "#fff",
-                  cursor: "pointer",
+                  cursor: isSavingEdit ? "wait" : "pointer",
                 }}
               >
-                Enregistrer
+                {isSavingEdit ? "Enregistrement..." : "Enregistrer"}
               </button>
             </div>
           </form>
@@ -397,16 +817,17 @@ export default function Admin() {
             <button
               type="button"
               onClick={confirmDelete}
+              disabled={isDeleting}
               style={{
                 padding: "10px 16px",
                 borderRadius: 6,
                 border: "1px solid #dc2626",
-                background: "#dc2626",
+                background: isDeleting ? "#fca5a5" : "#dc2626",
                 color: "#fff",
-                cursor: "pointer",
+                cursor: isDeleting ? "wait" : "pointer",
               }}
             >
-              Supprimer
+              {isDeleting ? "Suppression..." : "Supprimer"}
             </button>
           </div>
         </Modal>
@@ -414,3 +835,4 @@ export default function Admin() {
     </div>
   );
 }
+

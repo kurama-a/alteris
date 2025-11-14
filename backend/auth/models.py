@@ -47,3 +47,12 @@ class PasswordRecoveryRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+class Entity(BaseModel):
+    raisonSociale: str = Field(..., example="Eseo")
+    siret: str = Field(..., example="12345678900011")
+    role: str = Field(..., example="ecole")
+    adresse: Optional[str] = Field(None, example="13 rue mauranne saulnier")
+    email: EmailStr = Field(..., example="contact@eseo.fr")
+    creeLe: Optional[str] = Field(None, example="2025-01-01")
+

@@ -53,6 +53,10 @@ export type Me = {
   fullName: string;
   roles: string[];
   roleLabel: string;
+  role?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
   perms: Perm[];
   profile?: ProfileInfo;
   company?: CompanyInfo;
@@ -90,7 +94,7 @@ type MeResponse = {
   me: Me;
 };
 
-export type UserSummary = Pick<Me, "id" | "email" | "fullName" | "roleLabel" | "perms">;
+export type UserSummary = Pick<Me, "id" | "email" | "fullName" | "roleLabel" | "perms" | "roles" | "role" | "firstName" | "lastName" | "phone">;
 
 const SESSION_STORAGE_KEY = "alteris:auth:session";
 

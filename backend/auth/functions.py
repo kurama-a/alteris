@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from typing import Any, Dict, List, Optional
 
 from common import db as database
-from auth.models import UserRole, User, LoginRequest, EmailRequest, PasswordRecoveryRequest
+from auth.models import UserRole, User, LoginRequest, EmailRequest, PasswordRecoveryRequest, Entity
 from auth.role_definitions import ROLE_DEFINITIONS, get_role_definition
 
 # =====================
@@ -115,8 +115,21 @@ def build_me_from_document(user: Dict[str, Any], role: str) -> Dict[str, Any]:
         "fullName": full_name,
         "roles": roles,
         "roleLabel": role_label,
+        "role": role,
         "perms": meta.get("perms", []),
     }
+
+    first_name = user.get("first_name")
+    if isinstance(first_name, str) and first_name.strip():
+        me["firstName"] = first_name.strip()
+
+    last_name = user.get("last_name")
+    if isinstance(last_name, str) and last_name.strip():
+        me["lastName"] = last_name.strip()
+
+    phone = user.get("phone")
+    if isinstance(phone, str) and phone.strip():
+        me["phone"] = phone.strip()
 
     stored_roles = user.get("roles")
     if isinstance(stored_roles, list) and stored_roles:
@@ -161,7 +174,6 @@ DOMAINES_PAR_PROFIL = {
     "entreprise_externe": "entreprise.reseaualternance.fr",
     "responsable_cursus": "cursus.reseaualternance.fr"
 }
-
 
 # ------------------------
 # Helpers DB / rôle
@@ -213,6 +225,31 @@ async def register_user(user: User) -> Dict:
     }
 
 
+
+# ------------------------
+# REGISTER ENTITY
+# ------------------------
+async def register_entity(entity: Entity) -> Dict[str, Any]:
+    """Crée ou refuse une entité (ecole, entreprise, etc.)."""
+    if database.db is None:
+        raise HTTPException(status_code=500, detail="DB non initialisée")
+
+    collection = database.db["entities"]
+    conflict_filter = {"$or": [{"siret": entity.siret}, {"email": entity.email}]}
+    existing = await collection.find_one(conflict_filter)
+    if existing:
+        raise HTTPException(status_code=409, detail="Une entité avec ce SIRET ou cet email existe déjà")
+
+    entity_doc = entity.dict()
+    now = datetime.utcnow()
+    entity_doc.update({"created_at": now, "updated_at": now})
+
+    result = await collection.insert_one(entity_doc)
+    return {
+        "message": "Entité enregistrée avec succès",
+        "entity_id": str(result.inserted_id),
+        "role": entity.role,
+    }
 # ------------------------
 # LOGIN
 # ------------------------
@@ -377,3 +414,5 @@ async def recover_password_for_role(req: PasswordRecoveryRequest) -> Dict:
         "new_password": new_password,
         "message": f"Mot de passe réinitialisé pour {role}"
     }
+
+

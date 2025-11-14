@@ -315,7 +315,6 @@ export default function Journal() {
       {tutors ? (
         <section className="cards">
           <TutorCard tutor={tutors.enterprisePrimary} />
-          <TutorCard tutor={tutors.enterpriseSecondary} />
           <TutorCard tutor={tutors.pedagogic} />
         </section>
       ) : null}

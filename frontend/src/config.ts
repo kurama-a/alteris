@@ -2,12 +2,16 @@ const DEFAULT_API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost";
 
 const DEFAULT_API_BASE_PORT_AUTH =
-  import.meta.env.VITE_API_BASE_PORT ?? "7281";
+  import.meta.env.VITE_API_BASE_PORT ?? "6924";
+
+const DEFAULT_API_BASE_PORT_ADMIN =
+  import.meta.env.VITE_API_BASE_PORT_ADMIN ?? "42928";
 
 const DEFAULT_API_BASE_PORT_APPRENTI =
-  import.meta.env.VITE_API_BASE_PORT_APPRENTI ?? "7269";
+  import.meta.env.VITE_API_BASE_PORT_APPRENTI ?? "63435";
 
 export const AUTH_API_URL = `${DEFAULT_API_BASE_URL}:${DEFAULT_API_BASE_PORT_AUTH}/auth`;
+export const ADMIN_API_URL = `${DEFAULT_API_BASE_URL}:${DEFAULT_API_BASE_PORT_ADMIN}/admin`;
 export const APPRENTI_API_URL = `${DEFAULT_API_BASE_URL}:${DEFAULT_API_BASE_PORT_APPRENTI}/apprenti`;
 
 export type JsonFetchOptions = RequestInit & {
@@ -52,3 +56,4 @@ async function extractErrorMessage(response: Response): Promise<string | null> {
   }
   return null;
 }
+
