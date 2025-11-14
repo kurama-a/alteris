@@ -1,10 +1,14 @@
-const DEFAULT_API_AUTH_URL =
+const DEFAULT_API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost";
 
-const DEFAULT_API_AUTH_PORT =
-  import.meta.env.VITE_API_BASE_PORT ?? "5108";
+const DEFAULT_API_BASE_PORT_AUTH =
+  import.meta.env.VITE_API_BASE_PORT ?? "7281";
 
-export const AUTH_API_URL = `${DEFAULT_API_AUTH_URL}:${DEFAULT_API_AUTH_PORT}/auth`;
+const DEFAULT_API_BASE_PORT_APPRENTI =
+  import.meta.env.VITE_API_BASE_PORT_APPRENTI ?? "7269";
+
+export const AUTH_API_URL = `${DEFAULT_API_BASE_URL}:${DEFAULT_API_BASE_PORT_AUTH}/auth`;
+export const APPRENTI_API_URL = `${DEFAULT_API_BASE_URL}:${DEFAULT_API_BASE_PORT_APPRENTI}/apprenti`;
 
 export type JsonFetchOptions = RequestInit & {
   token?: string;

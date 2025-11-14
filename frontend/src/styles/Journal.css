@@ -232,13 +232,22 @@ body{
   margin-top:2px;
 }
 .journal-selector-id{
-  display:block;
-  margin-top:6px;
-  font-size:12px;
-  text-transform:uppercase;
-  letter-spacing:0.05em;
-  color:var(--primary);
-}
+    display:block;
+    margin-top:6px;
+    font-size:12px;
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+    color:var(--primary);
+  }
+
+.journal-status{
+    margin-top:12px;
+    font-size:13px;
+    color:var(--text);
+  }
+.journal-status-error{
+    color:#dc2626;
+  }
 
 .documents-section{
   margin-top:0;

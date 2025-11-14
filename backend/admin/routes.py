@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from bson import ObjectId
 import common.db as database
 from models import AssocierTuteurRequest,UserUpdateModel
-from models import AssocierResponsableCursusRequest,AssocierResponsablePromoRequest
+from models import AssocierResponsableCursusRequest,AssocierResponsablePromoRequest, AssocierMaitreRequest
 from functions import get_apprentis_by_annee_academique ,supprimer_utilisateur_par_role_et_id,modifier_utilisateur_par_role_et_id
 def get_collection_name_by_role(role: str) -> str:
     return f"users_{role.lower().replace(' ', '_')}"
@@ -68,11 +68,11 @@ async def generate_promo_by_annee(annee_academique: str):
     }
 
 @admin_api.post("/associer-maitre")
-async def associer_maitre(data: AssocierTuteurRequest):
+async def associer_maitre(data: AssocierMaitreRequest):
     apprenti_collection = get_collection_from_role("apprenti")
-    maitre_collection = get_collection_from_role("maitre")
+    maitre_collection = get_collection_from_role("maitre_apprentissage")
 
-    maitre = await maitre_collection.find_one({"_id": ObjectId(data.tuteur_id)})
+    maitre = await maitre_collection.find_one({"_id": ObjectId(data.maitre_id)})
     if not maitre:
         raise HTTPException(status_code=404, detail="Maître d’apprentissage inexistant")
 

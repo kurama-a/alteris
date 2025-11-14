@@ -1,6 +1,7 @@
 import React from "react";
 import type { TutorInfo, ApprenticeJournal } from "../auth/Permissions";
-import { useMe } from "../auth/Permissions";
+import { useAuth, useMe } from "../auth/Permissions";
+import { fetchApprenticeJournal } from "../api/apprentice";
 import {
   useDocuments,
   DOCUMENT_DEFINITIONS,
@@ -15,7 +16,11 @@ type TutorCardProps = {
 
 export default function Journal() {
   const me = useMe();
+  const { token } = useAuth();
   const { documents, addDocument, removeDocument } = useDocuments();
+  const [remoteJournals, setRemoteJournals] = React.useState<Record<string, ApprenticeJournal>>({});
+  const [loadingJournalId, setLoadingJournalId] = React.useState<string | null>(null);
+  const [journalError, setJournalError] = React.useState<string | null>(null);
   const ownJournal = React.useMemo<ApprenticeJournal | null>(() => {
     if (me.profile && me.company && me.school) {
       return {
@@ -46,13 +51,13 @@ export default function Journal() {
   }, [me.apprentices, ownJournal]);
 
   const [selectedId, setSelectedId] = React.useState<string | null>(() =>
-    accessibleJournals[0]?.id ?? null
+    accessibleJournals[0]?.id ?? me.id ?? null
   );
 
   React.useEffect(() => {
     if (accessibleJournals.length === 0) {
-      if (selectedId !== null) {
-        setSelectedId(null);
+      if (!selectedId && me.id) {
+        setSelectedId(me.id);
       }
       return;
     }
@@ -62,39 +67,68 @@ export default function Journal() {
     if (!exists) {
       setSelectedId(accessibleJournals[0].id);
     }
-  }, [accessibleJournals, selectedId]);
+  }, [accessibleJournals, selectedId, me.id]);
 
-  const activeJournal =
+  const remoteJournalForSelection = selectedId ? remoteJournals[selectedId] : null;
+
+  const fallbackJournal =
     (selectedId &&
       accessibleJournals.find((candidate) => candidate.id === selectedId)) ??
     ownJournal ??
     accessibleJournals[0] ??
     null;
 
-  if (!activeJournal) {
-    return (
-      <div className="page">
-        <section className="content content-fallback">
-          <h1>Journal indisponible</h1>
-          <p>
-            Bonjour {me.fullName}, aucun journal n&apos;est encore associé à
-            votre profil. Si vous pensez qu&apos;il s&apos;agit d&apos;une
-            erreur, merci de contacter l&apos;administrateur Alteris.
-          </p>
-        </section>
-      </div>
-    );
-  }
+  const activeJournal = remoteJournalForSelection ?? fallbackJournal;
 
-  const { profile, company, school, tutors, journalHeroImageUrl, fullName, email, id } =
-    activeJournal;
+  React.useEffect(() => {
+    if (!selectedId) {
+      return;
+    }
 
-  const heroImage =
-    journalHeroImageUrl ??
-    "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=2400&auto=format&fit=crop";
+    if (remoteJournalForSelection) {
+      setJournalError(null);
+      return;
+    }
 
-  const canSelectApprentices = Boolean(me.apprentices && me.apprentices.length > 0);
-  const activeId = id;
+    let cancelled = false;
+    const currentId = selectedId;
+    setJournalError(null);
+    setLoadingJournalId(currentId);
+
+    fetchApprenticeJournal(currentId, token ?? undefined)
+      .then((journal) => {
+        if (cancelled) {
+          return;
+        }
+        setRemoteJournals((current) => ({ ...current, [currentId]: journal }));
+        setJournalError(null);
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Impossible de charger les donnees du journal.";
+        setJournalError(message);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingJournalId((current) => (current === currentId ? null : current));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, token, remoteJournalForSelection]);
+
+  const isLoadingActiveJournal =
+    Boolean(loadingJournalId && selectedId && loadingJournalId === selectedId);
+
+  const activeId = activeJournal?.id ?? selectedId ?? me.id ?? "";
+
   const documentsForActive = React.useMemo<StoredDocument[]>(
     () => documents.filter((doc) => doc.apprenticeId === activeId),
     [documents, activeId]
@@ -104,11 +138,11 @@ export default function Journal() {
 
   const handleUpload = React.useCallback(
     async (category: DocumentCategory, files: FileList | null) => {
-      if (!files || files.length === 0) return;
+      if (!files || files.length === 0 || !activeJournal) return;
       const file = files[0];
       const result = addDocument({
-        apprenticeId: activeId,
-        apprenticeName: fullName,
+        apprenticeId: activeJournal.id,
+        apprenticeName: activeJournal.fullName,
         category,
         file,
         uploaderId: me.id,
@@ -119,7 +153,7 @@ export default function Journal() {
       }
       setErrors((current) => ({ ...current, [category]: undefined }));
     },
-    [addDocument, activeId, fullName, me.id]
+    [addDocument, activeJournal, me.id]
   );
 
   const handleRemove = React.useCallback(
@@ -133,7 +167,7 @@ export default function Journal() {
     (category: DocumentCategory) => {
       const records = documentsForActive.filter((doc) => doc.category === category);
       if (records.length === 0) {
-        return <p className="documents-empty">Aucun document déposé pour le moment.</p>;
+        return <p className="documents-empty">Aucun document depose pour le moment.</p>;
       }
       return (
         <ul className="documents-list">
@@ -142,13 +176,13 @@ export default function Journal() {
               <div className="documents-item-info">
                 <span className="documents-item-name">{doc.fileName}</span>
                 <span className="documents-item-meta">
-                  Téléversé le {new Date(doc.uploadedAt).toLocaleString("fr-FR")} ·{" "}
+                  Televerse le {new Date(doc.uploadedAt).toLocaleString("fr-FR")} a {" \n                    "}
                   {(doc.fileSize / 1024).toFixed(1)} Ko
                 </span>
               </div>
               <div className="documents-item-actions">
                 <a href={doc.downloadUrl} download={doc.fileName} className="documents-link">
-                  Télécharger
+                  Telecharger
                 </a>
                 <button
                   type="button"
@@ -165,6 +199,43 @@ export default function Journal() {
     },
     [documentsForActive, handleRemove]
   );
+
+  if (!activeJournal) {
+    if (selectedId && isLoadingActiveJournal) {
+      return (
+        <div className="page">
+          <section className="content content-fallback">
+            <h1>Chargement du journal</h1>
+            <p>Nous recuperons les informations completes de votre journal...</p>
+          </section>
+        </div>
+      );
+    }
+
+    return (
+      <div className="page">
+        <section className="content content-fallback">
+          <h1>Journal indisponible</h1>
+          <p>
+            Bonjour {me.fullName}, aucun journal n&apos;est encore associe a votre profil. Si vous
+            pensez qu&apos;il s&apos;agit d&apos;une erreur, merci de contacter l&apos;administrateur Alteris.
+          </p>
+          {journalError ? (
+            <p className="journal-status journal-status-error">{journalError}</p>
+          ) : null}
+        </section>
+      </div>
+    );
+  }
+
+  const { profile, company, school, tutors, journalHeroImageUrl, fullName, email, id } =
+    activeJournal;
+
+  const heroImage =
+    journalHeroImageUrl ??
+    "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=2400&auto=format&fit=crop";
+
+  const canSelectApprentices = Boolean(me.apprentices && me.apprentices.length > 0);
 
   return (
     <div className="page">
@@ -193,6 +264,13 @@ export default function Journal() {
             })}
           </div>
         </section>
+      ) : null}
+
+      {journalError ? (
+        <p className="journal-status journal-status-error">{journalError}</p>
+      ) : null}
+      {isLoadingActiveJournal ? (
+        <p className="journal-status">Chargement des informations du journal...</p>
       ) : null}
 
       <header className="hero">
@@ -322,3 +400,7 @@ function TutorCard({ tutor }: TutorCardProps) {
     </article>
   );
 }
+
+
+
+

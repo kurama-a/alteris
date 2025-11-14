@@ -227,7 +227,6 @@ export default function Admin() {
               <th style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0" }}>Nom complet</th>
               <th style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0" }}>Email</th>
               <th style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0" }}>Rôle</th>
-              <th style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0" }}>Permissions</th>
               <th style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0" }}>Actions</th>
             </tr>
           </thead>
@@ -246,7 +245,6 @@ export default function Admin() {
                 <td style={{ padding: "12px 16px" }}>{user.fullName}</td>
                 <td style={{ padding: "12px 16px" }}>{user.email}</td>
                 <td style={{ padding: "12px 16px" }}>{user.roleLabel}</td>
-                <td style={{ padding: "12px 16px" }}>{renderPerms(user.perms)}</td>
                 <td style={{ padding: "12px 16px", display: "flex", gap: 8 }}>
                   <button
                     onClick={() => beginEdit(user)}

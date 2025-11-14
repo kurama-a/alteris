@@ -9,6 +9,10 @@ class HealthResponse(BaseModel):
 class AssocierTuteurRequest(BaseModel):
     apprenti_id: str
     tuteur_id: str
+    
+class AssocierMaitreRequest(BaseModel):
+    apprenti_id: str
+    maitre_id: str
 
 class AssocierResponsableCursusRequest(BaseModel):
     apprenti_id: str
