@@ -2,13 +2,13 @@ const DEFAULT_API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost";
 
 const DEFAULT_API_BASE_PORT_AUTH =
-  import.meta.env.VITE_API_BASE_PORT ?? "57219";
+  import.meta.env.VITE_API_BASE_PORT ?? "17293";
 
 const DEFAULT_API_BASE_PORT_ADMIN =
-  import.meta.env.VITE_API_BASE_PORT_ADMIN ?? "57226";
+  import.meta.env.VITE_API_BASE_PORT_ADMIN ?? "63624";
 
 const DEFAULT_API_BASE_PORT_APPRENTI =
-  import.meta.env.VITE_API_BASE_PORT_APPRENTI ?? "57206";
+  import.meta.env.VITE_API_BASE_PORT_APPRENTI ?? "63627";
 
 export const AUTH_API_URL = `${DEFAULT_API_BASE_URL}:${DEFAULT_API_BASE_PORT_AUTH}/auth`;
 export const ADMIN_API_URL = `${DEFAULT_API_BASE_URL}:${DEFAULT_API_BASE_PORT_ADMIN}/admin`;

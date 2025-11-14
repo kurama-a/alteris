@@ -63,7 +63,6 @@ export default function Layout() {
         </nav>
 
         <div className="navbar-right">
-          <div className="user-name">{me.fullName}</div>
           <div className="user-email">{me.email}</div>
           <div className="user-role">Rôle : {me.roleLabel}</div>
           <button type="button" className="logout-button" onClick={handleLogout}>

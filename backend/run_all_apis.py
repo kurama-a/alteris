@@ -3,13 +3,13 @@ import socket
 import time
 import os
 
-MICROSERVICES = [
+MICROSERVICES = [    
+    {"name": "admin", "path": "admin", "module": "main"},
     {"name": "apprenti", "path": "apprenti", "module": "main"},
     {"name": "tuteur", "path": "tuteur", "module": "main"},
     {"name": "maitre", "path": "maitre", "module": "main"},
     {"name": "coordonatrice", "path": "coordonatrice", "module": "main"},
     {"name": "auth", "path": "auth", "module": "main"},
-    {"name": "admin", "path": "admin", "module": "main"},
     {"name": "responsable_cursus", "path": "responsable_cursus", "module": "main"},
 ]
 

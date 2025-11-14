@@ -4,7 +4,12 @@ from bson import ObjectId
 import common.db as database
 from models import AssocierTuteurRequest,UserUpdateModel
 from models import AssocierResponsableCursusRequest,AssocierResponsablePromoRequest, AssocierMaitreRequest
-from functions import get_apprentis_by_annee_academique ,supprimer_utilisateur_par_role_et_id,modifier_utilisateur_par_role_et_id
+from functions import (
+    get_apprentis_by_annee_academique,
+    supprimer_utilisateur_par_role_et_id,
+    modifier_utilisateur_par_role_et_id,
+    list_all_apprentis,
+)
 def get_collection_name_by_role(role: str) -> str:
     return f"users_{role.lower().replace(' ', '_')}"
 
@@ -14,6 +19,11 @@ def get_collection_from_role(role: str):
     return database.db[get_collection_name_by_role(role)]
 
 admin_api = APIRouter(tags=["Admin"])
+
+
+@admin_api.get("/apprentis", summary="Lister tous les apprentis pour l'administration")
+async def get_all_apprentis():
+    return await list_all_apprentis()
 
 # ✅ Route POST /associer-tuteur
 @admin_api.post("/associer-tuteur")

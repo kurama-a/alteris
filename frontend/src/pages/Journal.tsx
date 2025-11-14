@@ -2,6 +2,7 @@ import React from "react";
 import type { TutorInfo, ApprenticeJournal } from "../auth/Permissions";
 import { useAuth, useMe } from "../auth/Permissions";
 import { fetchApprenticeJournal } from "../api/apprentice";
+import { ADMIN_API_URL, fetchJson } from "../config";
 import {
   useDocuments,
   DOCUMENT_DEFINITIONS,
@@ -14,6 +15,16 @@ type TutorCardProps = {
   tutor: TutorInfo;
 };
 
+type JournalSelectableApprentice = {
+  id: string;
+  fullName: string;
+  email: string;
+};
+
+type AdminApprentisResponse = {
+  apprentis: JournalSelectableApprentice[];
+};
+
 export default function Journal() {
   const me = useMe();
   const { token } = useAuth();
@@ -21,6 +32,13 @@ export default function Journal() {
   const [remoteJournals, setRemoteJournals] = React.useState<Record<string, ApprenticeJournal>>({});
   const [loadingJournalId, setLoadingJournalId] = React.useState<string | null>(null);
   const [journalError, setJournalError] = React.useState<string | null>(null);
+  const [adminApprentices, setAdminApprentices] = React.useState<JournalSelectableApprentice[]>([]);
+  const [isLoadingAdminApprentices, setIsLoadingAdminApprentices] = React.useState(false);
+  const [apprenticeListError, setApprenticeListError] = React.useState<string | null>(null);
+  const isAdmin = React.useMemo(
+    () => me.role === "admin" || (Array.isArray(me.roles) && me.roles.includes("admin")),
+    [me.role, me.roles]
+  );
   const ownJournal = React.useMemo<ApprenticeJournal | null>(() => {
     if (me.profile && me.company && me.school) {
       return {
@@ -50,34 +68,104 @@ export default function Journal() {
     return Array.from(map.values());
   }, [me.apprentices, ownJournal]);
 
-  const [selectedId, setSelectedId] = React.useState<string | null>(() =>
-    accessibleJournals[0]?.id ?? me.id ?? null
-  );
+  React.useEffect(() => {
+    if (!isAdmin || !token) {
+      setAdminApprentices([]);
+      setApprenticeListError(null);
+      setIsLoadingAdminApprentices(false);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingAdminApprentices(true);
+    setApprenticeListError(null);
+    fetchJson<AdminApprentisResponse>(`${ADMIN_API_URL}/apprentis`, { token })
+      .then((payload) => {
+        if (cancelled) return;
+        const apprentices =
+          payload.apprentis
+            ?.map((user) => ({
+              id: user.id,
+              fullName: user.fullName || user.email || "Apprenti",
+              email: user.email,
+            }))
+            .filter((user): user is JournalSelectableApprentice => Boolean(user.id)) ?? [];
+        setAdminApprentices(apprentices);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setAdminApprentices([]);
+        setApprenticeListError(
+          error instanceof Error
+            ? error.message
+            : "Impossible de recuperer la liste des apprentis."
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingAdminApprentices(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin, token]);
+
+  const accessibleSummaries = React.useMemo<JournalSelectableApprentice[]>(() => {
+    return accessibleJournals.map((apprentice) => ({
+      id: apprentice.id,
+      fullName: apprentice.fullName,
+      email: apprentice.email,
+    }));
+  }, [accessibleJournals]);
+
+  const selectableApprentices = React.useMemo<JournalSelectableApprentice[]>(() => {
+    const map = new Map<string, JournalSelectableApprentice>();
+    accessibleSummaries.forEach((apprentice) => {
+      map.set(apprentice.id, apprentice);
+    });
+    adminApprentices.forEach((apprentice) => {
+      if (apprentice.id) {
+        map.set(apprentice.id, apprentice);
+      }
+    });
+    return Array.from(map.values()).sort((a, b) =>
+      a.fullName.localeCompare(b.fullName, "fr", { sensitivity: "base" })
+    );
+  }, [accessibleSummaries, adminApprentices]);
+
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (accessibleJournals.length === 0) {
-      if (!selectedId && me.id) {
-        setSelectedId(me.id);
+    if (selectableApprentices.length === 0) {
+      if (!selectedId && !isAdmin) {
+        if (ownJournal) {
+          setSelectedId(ownJournal.id);
+        } else if (me.id) {
+          setSelectedId(me.id);
+        }
       }
       return;
     }
-    const exists = selectedId
-      ? accessibleJournals.some((candidate) => candidate.id === selectedId)
-      : false;
-    if (!exists) {
-      setSelectedId(accessibleJournals[0].id);
+    if (selectedId) {
+      const exists = selectableApprentices.some((candidate) => candidate.id === selectedId);
+      if (exists) {
+        return;
+      }
     }
-  }, [accessibleJournals, selectedId, me.id]);
+    if (isAdmin) {
+      if (selectedId !== null) {
+        setSelectedId(null);
+      }
+    } else {
+      setSelectedId(selectableApprentices[0].id);
+    }
+  }, [selectableApprentices, selectedId, ownJournal, me.id, isAdmin]);
 
   const remoteJournalForSelection = selectedId ? remoteJournals[selectedId] : null;
 
-  const fallbackJournal =
-    (selectedId
-      ? accessibleJournals.find((candidate) => candidate.id === selectedId)
-      : null) ??
-    ownJournal ??
-    accessibleJournals[0] ??
-    null;
+  const fallbackJournal = selectedId
+    ? accessibleJournals.find((candidate) => candidate.id === selectedId) ?? null
+    : ownJournal ?? accessibleJournals[0] ?? null;
 
   const activeJournal = remoteJournalForSelection ?? fallbackJournal;
   const tutorCards = React.useMemo(() => {
@@ -90,7 +178,7 @@ export default function Journal() {
         ? { key: "maitre-apprentissage", tutor: currentTutors.enterprisePrimary }
         : null,
       currentTutors.pedagogic
-        ? { key: "tuteur-pedagogique", tutor: currentTutors.enterpriseSecondary }
+        ? { key: "tuteur-pedagogique", tutor: currentTutors.pedagogic }
         : null,
     ].filter(Boolean) as { key: string; tutor: TutorInfo }[];
     return cards;
@@ -216,13 +304,74 @@ export default function Journal() {
     [documentsForActive, handleRemove]
   );
 
+  const heroImage =
+    activeJournal?.journalHeroImageUrl ??
+    "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=2400&q=80";
+
+  const canSelectApprentices =
+    selectableApprentices.length > 1 || (isAdmin && selectableApprentices.length > 0);
+
+  const selectorContent = canSelectApprentices ? (
+    <section className="journal-selector">
+      <h2 className="journal-selector-title">
+        {isAdmin
+          ? "Selectionnez le journal d'un apprenti"
+          : me.apprentices && me.apprentices.length > 1
+          ? "Selectionnez un apprenti a suivre"
+          : "Apprenti suivi"}
+      </h2>
+      <div className="journal-selector-list">
+        {selectableApprentices.map((apprentice) => {
+          const isActive = apprentice.id === activeId;
+          return (
+            <button
+              key={apprentice.id}
+              type="button"
+              className={`journal-selector-item${isActive ? " is-active" : ""}`}
+              onClick={() => setSelectedId(apprentice.id)}
+            >
+              <span className="journal-selector-name">{apprentice.fullName}</span>
+              <span className="journal-selector-email">{apprentice.email}</span>
+              <span className="journal-selector-id">{apprentice.id}</span>
+            </button>
+          );
+        })}
+      </div>
+      {isAdmin ? (
+        <div className="journal-selector-note">
+          {isLoadingAdminApprentices
+            ? "Chargement de la liste complete des apprentis..."
+            : apprenticeListError
+            ? apprenticeListError
+            : `Total : ${selectableApprentices.length} apprentis`}
+        </div>
+      ) : null}
+    </section>
+  ) : null;
+
   if (!activeJournal) {
     if (selectedId && isLoadingActiveJournal) {
       return (
         <div className="page">
+          {selectorContent}
           <section className="content content-fallback">
             <h1>Chargement du journal</h1>
-            <p>Nous recuperons les informations completes de votre journal...</p>
+            <p>Nous recuperons les informations completes de ce journal...</p>
+          </section>
+        </div>
+      );
+    }
+
+    if (isAdmin) {
+      return (
+        <div className="page">
+          {selectorContent}
+          <section className="content content-fallback">
+            <h1>Choisissez un journal</h1>
+            <p>Selectionnez un apprenti dans la liste pour consulter son journal.</p>
+            {journalError ? (
+              <p className="journal-status journal-status-error">{journalError}</p>
+            ) : null}
           </section>
         </div>
       );
@@ -244,43 +393,11 @@ export default function Journal() {
     );
   }
 
-  const { profile, company, school, journalHeroImageUrl, fullName, email, id } =
-    activeJournal;
+  const { profile, company, school, fullName, email, id } = activeJournal;
 
-  const heroImage =
-    journalHeroImageUrl ??
-    "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=2400&q=80";
-
-  const canSelectApprentices = Boolean(me.apprentices && me.apprentices.length > 0);
-i
   return (
     <div className="page">
-      {canSelectApprentices ? (
-        <section className="journal-selector">
-          <h2 className="journal-selector-title">
-            {me.apprentices && me.apprentices.length > 1
-              ? "Sélectionnez un apprenti à suivre"
-              : "Apprenti suivi"}
-          </h2>
-          <div className="journal-selector-list">
-            {accessibleJournals.map((apprentice) => {
-              const isActive = apprentice.id === activeId;
-              return (
-                <button
-                  key={apprentice.id}
-                  type="button"
-                  className={`journal-selector-item${isActive ? " is-active" : ""}`}
-                  onClick={() => setSelectedId(apprentice.id)}
-                >
-                  <span className="journal-selector-name">{apprentice.fullName}</span>
-                  <span className="journal-selector-email">{apprentice.email}</span>
-                  <span className="journal-selector-id">{apprentice.id}</span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      ) : null}
+      {selectorContent}
 
       {journalError ? (
         <p className="journal-status journal-status-error">{journalError}</p>

@@ -55,6 +55,31 @@ async def get_apprentis_by_annee_academique(annee_academique: str):
     return promo_doc
 
 
+async def list_all_apprentis():
+    """
+    Retourne l'ensemble des apprentis avec les informations utiles pour la sélection côté admin.
+    """
+    if database.db is None:
+        raise HTTPException(status_code=500, detail="Connexion DB absente")
+
+    collection_apprenti = database.db["users_apprenti"]
+    apprentis = []
+    cursor = collection_apprenti.find()
+    async for apprenti in cursor:
+        first_name = apprenti.get("first_name") or ""
+        last_name = apprenti.get("last_name") or ""
+        full_name = f"{first_name} {last_name}".strip()
+        if not full_name:
+            full_name = apprenti.get("fullName") or apprenti.get("name") or apprenti.get("email", "")
+        apprentis.append({
+            "id": str(apprenti.get("_id") or ""),
+            "fullName": full_name,
+            "email": apprenti.get("email", "")
+        })
+
+    return {"apprentis": apprentis}
+
+
 async def supprimer_utilisateur_par_role_et_id(role: str, user_id: str):
     """
     Supprime un utilisateur (apprenti, tuteur, etc.) à partir de son rôle et son ID.

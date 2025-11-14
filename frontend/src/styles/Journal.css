@@ -223,6 +223,11 @@ body{
   color:var(--text-strong);
   margin-bottom:12px;
 }
+.journal-selector-note{
+  margin-top:12px;
+  font-size:0.9rem;
+  color:var(--text);
+}
 .journal-selector-list{
   display:flex;
   flex-wrap:wrap;
