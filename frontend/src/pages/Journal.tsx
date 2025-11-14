@@ -72,8 +72,9 @@ export default function Journal() {
   const remoteJournalForSelection = selectedId ? remoteJournals[selectedId] : null;
 
   const fallbackJournal =
-    (selectedId &&
-      accessibleJournals.find((candidate) => candidate.id === selectedId)) ??
+    (selectedId
+      ? accessibleJournals.find((candidate) => candidate.id === selectedId)
+      : null) ??
     ownJournal ??
     accessibleJournals[0] ??
     null;
@@ -88,7 +89,9 @@ export default function Journal() {
       currentTutors.enterprisePrimary
         ? { key: "maitre-apprentissage", tutor: currentTutors.enterprisePrimary }
         : null,
-      currentTutors.pedagogic ? { key: "tuteur-pedagogique", tutor: <currentTutors className="enterpriseSecondary"></currentTutors> } : null,
+      currentTutors.pedagogic
+        ? { key: "tuteur-pedagogique", tutor: currentTutors.enterpriseSecondary }
+        : null,
     ].filter(Boolean) as { key: string; tutor: TutorInfo }[];
     return cards;
   }, [activeJournal]);
@@ -246,10 +249,10 @@ export default function Journal() {
 
   const heroImage =
     journalHeroImageUrl ??
-    "https://images.unsplash.com/photo-1503676260728-1c00da094a0b?q=80&w=2400&auto=format&fit=crop";
+    "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=2400&q=80";
 
   const canSelectApprentices = Boolean(me.apprentices && me.apprentices.length > 0);
-
+i
   return (
     <div className="page">
       {canSelectApprentices ? (
@@ -413,7 +416,3 @@ function TutorCard({ tutor }: TutorCardProps) {
     </article>
   );
 }
-
-
-
-
