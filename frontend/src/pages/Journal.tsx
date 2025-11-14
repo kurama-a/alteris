@@ -79,6 +79,19 @@ export default function Journal() {
     null;
 
   const activeJournal = remoteJournalForSelection ?? fallbackJournal;
+  const tutorCards = React.useMemo(() => {
+    const currentTutors = activeJournal?.tutors;
+    if (!currentTutors) {
+      return [];
+    }
+    const cards = [
+      currentTutors.enterprisePrimary
+        ? { key: "maitre-apprentissage", tutor: currentTutors.enterprisePrimary }
+        : null,
+      currentTutors.pedagogic ? { key: "tuteur-pedagogique", tutor: <currentTutors className="enterpriseSecondary"></currentTutors> } : null,
+    ].filter(Boolean) as { key: string; tutor: TutorInfo }[];
+    return cards;
+  }, [activeJournal]);
 
   React.useEffect(() => {
     if (!selectedId) {
@@ -228,7 +241,7 @@ export default function Journal() {
     );
   }
 
-  const { profile, company, school, tutors, journalHeroImageUrl, fullName, email, id } =
+  const { profile, company, school, journalHeroImageUrl, fullName, email, id } =
     activeJournal;
 
   const heroImage =
@@ -312,10 +325,11 @@ export default function Journal() {
         <div className="school-program">{school.program}</div>
       </section>
 
-      {tutors ? (
-        <section className="cards">
-          <TutorCard tutor={tutors.enterprisePrimary} />
-          <TutorCard tutor={tutors.pedagogic} />
+      {tutorCards.length > 0 ? (
+        <section className={`cards cards--count-${Math.min(tutorCards.length, 3)}`}>
+          {tutorCards.map(({ key, tutor }) => (
+            <TutorCard key={key} tutor={tutor} />
+          ))}
         </section>
       ) : null}
 
