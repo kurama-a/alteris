@@ -26,6 +26,8 @@ type CreateUserDraft = {
   anneeAcademique: string;
   password: string;
   role: string;
+  tutorId: string;
+  masterId: string;
 };
 
 function normalizeRoleLabel(label?: string): string {
@@ -68,6 +70,8 @@ const createUserTemplate = (): CreateUserDraft => ({
   anneeAcademique: "",
   password: "",
   role: DEFAULT_ROLE_VALUE,
+  tutorId: "",
+  masterId: "",
 });
 
 function inferRoleFromSummary(user: UserSummary): string | undefined {
@@ -195,6 +199,8 @@ export default function Admin() {
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
   const [createDraft, setCreateDraft] = React.useState<CreateUserDraft>(() => createUserTemplate());
   const [isCreatingUser, setIsCreatingUser] = React.useState(false);
+  const [editTutorId, setEditTutorId] = React.useState("");
+  const [editMasterId, setEditMasterId] = React.useState("");
 
   const mapUserToEditable = React.useCallback(
     (user: UserSummary): EditableUser => {
@@ -244,6 +250,9 @@ export default function Admin() {
     refreshUsers();
   }, [refreshUsers]);
 
+  const tutors = React.useMemo(() => users.filter((user) => user.role === "tuteur_pedagogique"), [users]);
+  const masters = React.useMemo(() => users.filter((user) => user.role === "maitre_apprentissage"), [users]);
+
   const isAllSelected = users.length > 0 && selectedIds.length === users.length;
   const hasSelection = selectedIds.length > 0;
 
@@ -262,20 +271,30 @@ export default function Admin() {
 
   const beginEdit = React.useCallback((user: EditableUser) => {
     const names = splitFullName(user.fullName);
+    const fallbackRole = inferRoleFromSummary(user) ?? DEFAULT_ROLE_VALUE;
+    const resolvedRole = user.role ?? fallbackRole;
+    const resolvedRoleLabel = ROLE_VALUE_TO_OPTION[resolvedRole]?.label ?? user.roleLabel;
     setActionError(null);
     setEditUser(user);
     setEditDraft({
       ...user,
+      role: resolvedRole,
+      roleLabel: resolvedRoleLabel,
+      roles: resolvedRoleLabel ? [resolvedRoleLabel] : user.roles,
       perms: [...user.perms],
       firstName: user.firstName ?? names.firstName ?? "",
       lastName: user.lastName ?? names.lastName ?? "",
       phone: user.phone ?? "",
     });
+    setEditTutorId("");
+    setEditMasterId("");
   }, []);
 
   const closeEditModal = React.useCallback(() => {
     setEditUser(null);
     setEditDraft(null);
+    setEditTutorId("");
+    setEditMasterId("");
   }, []);
 
   const handleEditChange = React.useCallback(
@@ -322,6 +341,36 @@ export default function Admin() {
         token,
         body: JSON.stringify(body),
       });
+      if (editDraft.role === "apprenti" && editDraft.id) {
+        const associationCalls: Promise<unknown>[] = [];
+        if (editTutorId) {
+          associationCalls.push(
+            fetchJson(`${ADMIN_API_URL}/associer-tuteur`, {
+              method: "POST",
+              token,
+              body: JSON.stringify({
+                apprenti_id: editDraft.id,
+                tuteur_id: editTutorId,
+              }),
+            })
+          );
+        }
+        if (editMasterId) {
+          associationCalls.push(
+            fetchJson(`${ADMIN_API_URL}/associer-maitre`, {
+              method: "POST",
+              token,
+              body: JSON.stringify({
+                apprenti_id: editDraft.id,
+                maitre_id: editMasterId,
+              }),
+            })
+          );
+        }
+        if (associationCalls.length) {
+          await Promise.all(associationCalls);
+        }
+      }
       closeEditModal();
       await refreshUsers();
     } catch (error) {
@@ -331,7 +380,7 @@ export default function Admin() {
     } finally {
       setIsSavingEdit(false);
     }
-  }, [editDraft, editUser, token, closeEditModal, refreshUsers]);
+  }, [editDraft, editUser, token, closeEditModal, refreshUsers, editTutorId, editMasterId]);
 
   const requestDelete = React.useCallback((ids: string[]) => {
     setActionError(null);
@@ -387,7 +436,16 @@ export default function Admin() {
 
   const handleCreateChange = React.useCallback(
     (key: keyof CreateUserDraft, value: string) => {
-      setCreateDraft((current) => ({ ...current, [key]: value }));
+      setCreateDraft((current) => {
+        if (key === "role" && value !== "apprenti") {
+          return { ...current, role: value, tutorId: "", masterId: "" };
+        }
+        return { ...current, [key]: value };
+      });
+      if (key === "role" && value !== "apprenti") {
+        setEditTutorId("");
+        setEditMasterId("");
+      }
     },
     []
   );
@@ -401,7 +459,7 @@ export default function Admin() {
     setIsCreatingUser(true);
     setActionError(null);
     try {
-      await fetchJson(`${AUTH_API_URL}/register`, {
+      const created = await fetchJson<{ user_id?: string }>(`${AUTH_API_URL}/register`, {
         method: "POST",
         token,
         body: JSON.stringify({
@@ -414,6 +472,37 @@ export default function Admin() {
           role: createDraft.role,
         }),
       });
+      const newUserId = created?.user_id;
+      if (createDraft.role === "apprenti" && newUserId) {
+        const associationCalls: Promise<unknown>[] = [];
+        if (createDraft.tutorId) {
+          associationCalls.push(
+            fetchJson(`${ADMIN_API_URL}/associer-tuteur`, {
+              method: "POST",
+              token,
+              body: JSON.stringify({
+                apprenti_id: newUserId,
+                tuteur_id: createDraft.tutorId,
+              }),
+            })
+          );
+        }
+        if (createDraft.masterId) {
+          associationCalls.push(
+            fetchJson(`${ADMIN_API_URL}/associer-maitre`, {
+              method: "POST",
+              token,
+              body: JSON.stringify({
+                apprenti_id: newUserId,
+                maitre_id: createDraft.masterId,
+              }),
+            })
+          );
+        }
+        if (associationCalls.length) {
+          await Promise.all(associationCalls);
+        }
+      }
       closeCreateModal();
       await refreshUsers();
     } catch (error) {
@@ -656,6 +745,46 @@ export default function Admin() {
                 ))}
               </select>
             </label>
+            {createDraft.role === "apprenti" && (
+              <>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span>Tuteur pédagogique</span>
+                  <select
+                    value={createDraft.tutorId}
+                    onChange={(event) => handleCreateChange("tutorId", event.target.value)}
+                    style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                  >
+                    <option value="">Aucun tuteur</option>
+                    {tutors.map((tutor) => (
+                      <option key={tutor.id} value={tutor.id}>
+                        {tutor.fullName} — {tutor.email}
+                      </option>
+                    ))}
+                  </select>
+                  {tutors.length === 0 && (
+                    <small style={{ color: "#b45309" }}>Aucun tuteur disponible pour le moment.</small>
+                  )}
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span>Maître d'apprentissage</span>
+                  <select
+                    value={createDraft.masterId}
+                    onChange={(event) => handleCreateChange("masterId", event.target.value)}
+                    style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                  >
+                    <option value="">Aucun maître</option>
+                    {masters.map((master) => (
+                      <option key={master.id} value={master.id}>
+                        {master.fullName} — {master.email}
+                      </option>
+                    ))}
+                  </select>
+                  {masters.length === 0 && (
+                    <small style={{ color: "#b45309" }}>Aucun maître disponible pour le moment.</small>
+                  )}
+                </label>
+              </>
+            )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
               <button
                 type="button"
@@ -753,6 +882,46 @@ export default function Admin() {
                 ))}
               </select>
             </label>
+            {editDraft.role === "apprenti" && (
+              <>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span>Tuteur pédagogique</span>
+                  <select
+                    value={editTutorId}
+                    onChange={(event) => setEditTutorId(event.target.value)}
+                    style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                  >
+                    <option value="">Aucun tuteur</option>
+                    {tutors.map((tutor) => (
+                      <option key={tutor.id} value={tutor.id}>
+                        {tutor.fullName} — {tutor.email}
+                      </option>
+                    ))}
+                  </select>
+                  {tutors.length === 0 && (
+                    <small style={{ color: "#b45309" }}>Aucun tuteur disponible pour le moment.</small>
+                  )}
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span>Maître d'apprentissage</span>
+                  <select
+                    value={editMasterId}
+                    onChange={(event) => setEditMasterId(event.target.value)}
+                    style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                  >
+                    <option value="">Aucun maître</option>
+                    {masters.map((master) => (
+                      <option key={master.id} value={master.id}>
+                        {master.fullName} — {master.email}
+                      </option>
+                    ))}
+                  </select>
+                  {masters.length === 0 && (
+                    <small style={{ color: "#b45309" }}>Aucun maître disponible pour le moment.</small>
+                  )}
+                </label>
+              </>
+            )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
               <button
                 type="button"

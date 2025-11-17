@@ -94,6 +94,7 @@ export default function Entretiens() {
   const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null);
 
   const canModifySelected = canSchedule && selectedApprenticeId === me.id;
+  const hasApprenticeSelection = availableApprentices.length > 0;
 
   React.useEffect(() => {
     if (!availableApprentices.length) {
@@ -152,7 +153,7 @@ export default function Entretiens() {
     return () => {
       cancelled = true;
     };
-  }, [availableApprentices, selectedApprenticeId, token]);
+  }, [hasApprenticeSelection, selectedApprenticeId, token]);
 
   const sortedEntretiens = React.useMemo(() => {
     return [...entretiens].sort((a, b) => {
@@ -294,17 +295,18 @@ export default function Entretiens() {
         )}
       </div>
 
-      <div
-        style={{
-          border: "1px solid #e2e8f0",
-          borderRadius: 12,
-          padding: 16,
-          background: "#fff",
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
+      {!isApprentice && (
+        <div
+          style={{
+            border: "1px solid #e2e8f0",
+            borderRadius: 12,
+            padding: 16,
+            background: "#fff",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
         <label style={{ fontWeight: 600 }}>Apprenti suivi</label>
         {availableApprentices.length ? (
           <select
@@ -328,7 +330,8 @@ export default function Entretiens() {
             Aucun apprenti n'est rattaché à votre profil pour le moment.
           </p>
         )}
-      </div>
+        </div>
+      )}
 
       {isFormVisible && canModifySelected && (
         <form
