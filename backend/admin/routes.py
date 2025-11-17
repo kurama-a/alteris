@@ -3,8 +3,8 @@ from pydantic import BaseModel
 from bson import ObjectId
 import common.db as database
 from models import AssocierTuteurRequest,UserUpdateModel
-from models import AssocierResponsableCursusRequest,AssocierResponsablePromoRequest,AssocierMaitreRequest
-from functions import get_apprentis_by_annee_academique ,supprimer_utilisateur_par_role_et_id,modifier_utilisateur_par_role_et_id
+from models import AssocierResponsableCursusRequest,AssocierResponsablePromoRequest,AssocierMaitreRequest,PromotionUpsertRequest
+from functions import get_apprentis_by_annee_academique ,supprimer_utilisateur_par_role_et_id,modifier_utilisateur_par_role_et_id,list_promotions,create_or_update_promotion,list_responsables_cursus,list_all_apprentis
 def get_collection_name_by_role(role: str) -> str:
     return f"users_{role.lower().replace(' ', '_')}"
 
@@ -19,6 +19,10 @@ admin_api = APIRouter(tags=["Admin"])
 @admin_api.get("/apprentis", summary="Lister tous les apprentis pour l'administration")
 async def get_all_apprentis():
     return await list_all_apprentis()
+
+@admin_api.get("/promos", summary="Lister toutes les promotions")
+async def get_all_promotions():
+    return await list_promotions()
 
 # ✅ Route POST /associer-tuteur
 @admin_api.post("/associer-tuteur")
@@ -70,6 +74,14 @@ async def generate_promo_by_annee(annee_academique: str):
     return {
         "message": f"✅ Promo '{annee_academique}' générée avec succès",
         "data": promo
+    }
+
+@admin_api.post("/promos", summary="Créer ou mettre à jour une promotion")
+async def upsert_promo(data: PromotionUpsertRequest):
+    promotion = await create_or_update_promotion(data)
+    return {
+        "message": "Promotion mise a jour avec succes",
+        "promotion": promotion,
     }
 
 @admin_api.post("/associer-maitre")
@@ -176,6 +188,10 @@ async def associer_responsable_cursus(data: AssocierResponsableCursusRequest):
     }
 
 
+@admin_api.get("/responsables-cursus", summary="Lister les responsables de cursus disponibles")
+async def get_responsables():
+    return await list_responsables_cursus()
+
 @admin_api.delete("/user/{role}/{user_id}", summary="Supprimer un utilisateur par rôle et ID")
 async def delete_user(role: str, user_id: str):
     """
@@ -202,3 +218,4 @@ async def update_user(role: str, user_id: str, payload: dict = Body(...)):
 @admin_api.put("/user/{role}/{user_id}", summary="Modifier un utilisateur (apprenti, tuteur, etc.)")
 async def update_user(role: str, user_id: str, payload: dict):
     return await modifier_utilisateur_par_role_et_id(role, user_id, payload)
+

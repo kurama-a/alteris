@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from datetime import datetime
 import common.db as database
 from bson import ObjectId
-from models import UserUpdateModel
+from models import UserUpdateModel, PromotionUpsertRequest
 
 ROLES_VALIDES = [
     "apprenti",
@@ -43,6 +43,20 @@ ROLE_REFERENCES = {
     "responsable_cursus": {"apprenti_field": "responsable_cursus", "id_field": "responsable_cursus_id"},
 }
 
+
+def _serialize_promotion_document(document: dict) -> dict:
+    return {
+        "id": str(document.get("_id", "")),
+        "annee_academique": document.get("annee_academique"),
+        "label": document.get("label"),
+        "nb_apprentis": document.get("nb_apprentis", 0),
+        "coordinators": document.get("coordinators", []),
+        "next_milestone": document.get("next_milestone"),
+        "responsable_cursus": document.get("responsable_cursus"),
+        "updated_at": document.get("updated_at"),
+        "created_at": document.get("created_at"),
+    }
+
 async def get_apprentis_by_annee_academique(annee_academique: str):
     if database.db is None:
         raise HTTPException(status_code=500, detail="Connexion DB absente")
@@ -50,7 +64,6 @@ async def get_apprentis_by_annee_academique(annee_academique: str):
     collection_apprenti = database.db["users_apprenti"]
     collection_promo = database.db["promos"]
 
-    # 🔍 Étape 1 : Récupérer tous les apprentis de cette année académique
     apprentis_meme_promo = await collection_apprenti.find(
         {"annee_academique": annee_academique}
     ).to_list(length=None)
@@ -58,29 +71,37 @@ async def get_apprentis_by_annee_academique(annee_academique: str):
     if not apprentis_meme_promo:
         raise HTTPException(status_code=404, detail="Aucun apprenti trouvé pour cette année académique")
 
-    # 🗂️ Étape 2 : Construire le document de promo
-    promo_doc = {
+    promo_base_fields = {
         "annee_academique": annee_academique,
         "nb_apprentis": len(apprentis_meme_promo),
-        "created_at": datetime.utcnow(),
         "apprentis": [{
             "_id": str(apprenti["_id"]),
             "first_name": apprenti.get("first_name"),
             "last_name": apprenti.get("last_name"),
             "email": apprenti.get("email"),
             "phone": apprenti.get("phone")
-        } for apprenti in apprentis_meme_promo]
+        } for apprenti in apprentis_meme_promo],
+        "updated_at": datetime.utcnow(),
     }
 
-    # 💾 Étape 3 : Créer ou mettre à jour la promo
     await collection_promo.update_one(
         {"annee_academique": annee_academique},
-        {"$set": promo_doc},
+        {
+            "$set": promo_base_fields,
+            "$setOnInsert": {
+                "label": f"Promotion {annee_academique}",
+                "coordinators": [],
+                "next_milestone": None,
+                "created_at": datetime.utcnow(),
+            },
+        },
         upsert=True
     )
 
-    return promo_doc
-
+    updated = await collection_promo.find_one({"annee_academique": annee_academique})
+    if not updated:
+        raise HTTPException(status_code=500, detail="Impossible de générer la promotion demandée")
+    return updated
 
 async def list_all_apprentis():
     """
@@ -224,3 +245,75 @@ async def modifier_utilisateur_par_role_et_id(role: str, user_id: str, updates: 
         "updates_applied": update_dict
     }
 
+
+async def list_promotions():
+    if database.db is None:
+        raise HTTPException(status_code=500, detail="Connexion DB absente")
+
+    collection_promo = database.db["promos"]
+    cursor = collection_promo.find().sort("annee_academique", 1)
+    promotions = []
+    async for promo in cursor:
+        promotions.append(_serialize_promotion_document(promo))
+    return {"promotions": promotions}
+
+
+async def create_or_update_promotion(payload: PromotionUpsertRequest):
+    if database.db is None:
+        raise HTTPException(status_code=500, detail="Connexion DB absente")
+
+    collection_promo = database.db["promos"]
+    await get_apprentis_by_annee_academique(payload.annee_academique)
+
+    updates = {
+        "label": payload.label or f"Promotion {payload.annee_academique}",
+        "coordinators": payload.coordinators,
+        "next_milestone": payload.next_milestone,
+        "updated_at": datetime.utcnow(),
+    }
+
+    if payload.responsable_id:
+        responsable_collection = database.db["users_responsable_cursus"]
+        try:
+            responsable = await responsable_collection.find_one({"_id": ObjectId(payload.responsable_id)})
+        except Exception:
+            responsable = None
+        if not responsable:
+            raise HTTPException(status_code=404, detail="Responsable de cursus introuvable")
+        updates["responsable_cursus"] = {
+            "responsable_cursus_id": str(responsable["_id"]),
+            "first_name": responsable.get("first_name"),
+            "last_name": responsable.get("last_name"),
+            "email": responsable.get("email"),
+            "phone": responsable.get("phone"),
+        }
+
+    await collection_promo.update_one(
+        {"annee_academique": payload.annee_academique},
+        {"$set": updates},
+        upsert=True
+    )
+
+    promo = await collection_promo.find_one({"annee_academique": payload.annee_academique})
+    if not promo:
+        raise HTTPException(status_code=500, detail="Impossible de mettre à jour la promotion")
+    return _serialize_promotion_document(promo)
+
+
+async def list_responsables_cursus():
+    if database.db is None:
+        raise HTTPException(status_code=500, detail="Connexion DB absente")
+
+    collection = database.db["users_responsable_cursus"]
+    responsables = []
+    cursor = collection.find().sort("last_name", 1)
+    async for responsable in cursor:
+        first_name = responsable.get("first_name") or ""
+        last_name = responsable.get("last_name") or ""
+        full_name = f"{first_name} {last_name}".strip() or responsable.get("email", "")
+        responsables.append({
+            "id": str(responsable.get("_id") or ""),
+            "fullName": full_name,
+            "email": responsable.get("email", ""),
+        })
+    return {"responsables": responsables}

@@ -201,6 +201,132 @@
   text-decoration:underline;
 }
 
+.promotion-form{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:16px;
+  margin-top:16px;
+}
+
+.promotion-form label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  font-size:14px;
+  color:#1f2937;
+  font-weight:600;
+}
+
+.promotion-form input,
+.promotion-form textarea,
+.promotion-form select{
+  padding:10px 12px;
+  border-radius:8px;
+  border:1px solid #d1d5db;
+  font-size:14px;
+  font-weight:500;
+  color:#111827;
+}
+
+.promotion-form textarea{
+  resize:vertical;
+}
+
+.form-error{
+  color:#b91c1c;
+  font-size:13px;
+  margin:0;
+}
+
+.promotion-responsable{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.promotion-responsable label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  font-size:14px;
+  color:#1f2937;
+  font-weight:600;
+}
+
+.promotion-responsable select{
+  padding:10px 12px;
+  border-radius:8px;
+  border:1px solid #d1d5db;
+  font-size:14px;
+  font-weight:500;
+  color:#111827;
+}
+
+.promotion-actions{
+  display:flex;
+  gap:12px;
+}
+
+.modal-backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(15,23,42,0.5);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:1000;
+}
+
+.modal-container{
+  background:#fff;
+  border-radius:16px;
+  padding:24px;
+  width:min(520px,90vw);
+  max-height:80vh;
+  overflow:auto;
+  box-shadow:0 20px 60px rgba(15,23,42,0.3);
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.modal-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+}
+
+.modal-header h3{
+  margin:0;
+  font-size:18px;
+}
+
+.modal-header button{
+  border:none;
+  background:none;
+  font-size:24px;
+  cursor:pointer;
+}
+
+.members-list{
+  list-style:none;
+  padding:0;
+  margin:0;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.members-list li{
+  border:1px solid #e5e7eb;
+  border-radius:10px;
+  padding:12px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
 @media (max-width: 900px){
   .promotions-header{
     flex-direction:column;
