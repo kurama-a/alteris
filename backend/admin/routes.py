@@ -2,8 +2,15 @@ from fastapi import APIRouter, HTTPException,Body
 from pydantic import BaseModel
 from bson import ObjectId
 import common.db as database
-from models import AssocierTuteurRequest,UserUpdateModel
-from models import AssocierResponsableCursusRequest,AssocierResponsablePromoRequest,AssocierMaitreRequest
+from models import (
+    AssocierTuteurRequest,
+    UserUpdateModel,
+    AssocierResponsableCursusRequest,
+    AssocierResponsablePromoRequest,
+    AssocierMaitreRequest,
+    AssocierEcoleRequest,
+    AssocierEntrepriseRequest,
+)
 from functions import get_apprentis_by_annee_academique ,supprimer_utilisateur_par_role_et_id,modifier_utilisateur_par_role_et_id
 def get_collection_name_by_role(role: str) -> str:
     return f"users_{role.lower().replace(' ', '_')}"
@@ -27,6 +34,11 @@ async def associer_tuteur(data: AssocierTuteurRequest):
         if not tuteur:
             raise HTTPException(status_code=404, detail="Tuteur inexistant")
 
+        # 1️⃣ bis: Vérifie que l'apprenti existe
+        apprenti = await apprenti_collection.find_one({"_id": ObjectId(data.apprenti_id)})
+        if not apprenti:
+            raise HTTPException(status_code=404, detail="Apprenti inexistant")
+
         # 2️⃣ Construit les infos à enregistrer
         tuteur_info = {
             "tuteur_id": str(tuteur["_id"]),
@@ -45,10 +57,31 @@ async def associer_tuteur(data: AssocierTuteurRequest):
         if result.modified_count == 0:
             raise HTTPException(status_code=404, detail="Apprenti non trouvé ou déjà associé")
 
+        # 4️⃣ Ajoute aussi les infos de l'apprenti dans le tuteur (liste 'apprentis')
+        apprenti_info = {
+            "apprenti_id": str(apprenti["_id"]),
+            "first_name": apprenti.get("first_name"),
+            "last_name": apprenti.get("last_name"),
+            "email": apprenti.get("email"),
+            "phone": apprenti.get("phone"),
+            "annee_academique": apprenti.get("annee_academique"),
+        }
+
+        # Assure l'idempotence: retire l'entrée si elle existe puis ajoute la version à jour
+        await tuteur_collection.update_one(
+            {"_id": ObjectId(data.tuteur_id)},
+            {"$pull": {"apprentis": {"apprenti_id": str(apprenti["_id"])}}}
+        )
+        await tuteur_collection.update_one(
+            {"_id": ObjectId(data.tuteur_id)},
+            {"$addToSet": {"apprentis": apprenti_info}}
+        )
+
         return {
-            "message": "✅ Tuteur associé avec succès",
+            "message": "✅ Tuteur associé avec succès (bidirectionnel)",
             "apprenti_id": data.apprenti_id,
-            "tuteur": tuteur_info
+            "tuteur": tuteur_info,
+            "apprenti_ajoute_au_tuteur": apprenti_info,
         }
 
     except Exception as e:
@@ -77,6 +110,11 @@ async def associer_maitre(data: AssocierMaitreRequest):
     if not maitre:
         raise HTTPException(status_code=404, detail="Maître d’apprentissage inexistant")
 
+    # 🔍 Vérifie que l'apprenti existe
+    apprenti = await apprenti_collection.find_one({"_id": ObjectId(data.apprenti_id)})
+    if not apprenti:
+        raise HTTPException(status_code=404, detail="Apprenti inexistant")
+
     # 📦 Construction des infos à associer
     maitre_info = {
         "maitre_id": str(maitre["_id"]),
@@ -95,10 +133,151 @@ async def associer_maitre(data: AssocierMaitreRequest):
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Apprenti non trouvé ou déjà associé")
 
+    # 🔁 Ajoute aussi les infos de l'apprenti dans le maître (liste 'apprentis')
+    apprenti_info = {
+        "apprenti_id": str(apprenti["_id"]),
+        "first_name": apprenti.get("first_name"),
+        "last_name": apprenti.get("last_name"),
+        "email": apprenti.get("email"),
+        "phone": apprenti.get("phone"),
+        "annee_academique": apprenti.get("annee_academique"),
+    }
+    await maitre_collection.update_one(
+        {"_id": ObjectId(data.maitre_id)},
+        {"$pull": {"apprentis": {"apprenti_id": str(apprenti["_id"])}}}
+    )
+    await maitre_collection.update_one(
+        {"_id": ObjectId(data.maitre_id)},
+        {"$addToSet": {"apprentis": apprenti_info}}
+    )
+
     return {
-        "message": "✅ Maître d’apprentissage associé avec succès",
+        "message": "✅ Maître d’apprentissage associé avec succès (bidirectionnel)",
         "apprenti_id": data.apprenti_id,
-        "maitre": maitre_info
+        "maitre": maitre_info,
+        "apprenti_ajoute_au_maitre": apprenti_info,
+    }
+
+# ✅ Associer une ÉCOLE à un apprenti (et inversement)
+@admin_api.post("/associer-ecole")
+async def associer_ecole(data: AssocierEcoleRequest):
+    db = database.db
+    if db is None:
+        raise HTTPException(status_code=500, detail="Connexion DB absente")
+
+    apprenti_collection = get_collection_from_role("apprenti")
+    ecole_collection = get_collection_from_role("ecole")
+
+    # Vérifications d'existence
+    apprenti = await apprenti_collection.find_one({"_id": ObjectId(data.apprenti_id)})
+    if not apprenti:
+        raise HTTPException(status_code=404, detail="Apprenti inexistant")
+
+    ecole = await ecole_collection.find_one({"_id": ObjectId(data.ecole_id)})
+    if not ecole:
+        raise HTTPException(status_code=404, detail="École inexistante")
+
+    # Infos structurées
+    ecole_info = {
+        "ecole_id": str(ecole["_id"]),
+        "raisonSociale": ecole.get("raisonSociale"),
+        "siret": ecole.get("siret"),
+        "email": ecole.get("email"),
+        "adresse": ecole.get("adresse"),
+    }
+    apprenti_info = {
+        "apprenti_id": str(apprenti["_id"]),
+        "first_name": apprenti.get("first_name"),
+        "last_name": apprenti.get("last_name"),
+        "email": apprenti.get("email"),
+        "phone": apprenti.get("phone"),
+        "annee_academique": apprenti.get("annee_academique"),
+    }
+
+    # Mise à jour côté apprenti
+    res_apprenti = await apprenti_collection.update_one(
+        {"_id": ObjectId(data.apprenti_id)},
+        {"$set": {"ecole": ecole_info}}
+    )
+    if res_apprenti.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Apprenti non trouvé")
+
+    # Mise à jour côté école (liste des apprentis)
+    await ecole_collection.update_one(
+        {"_id": ObjectId(data.ecole_id)},
+        {"$pull": {"apprentis": {"apprenti_id": str(apprenti["_id"])}}}
+    )
+    await ecole_collection.update_one(
+        {"_id": ObjectId(data.ecole_id)},
+        {"$addToSet": {"apprentis": apprenti_info}}
+    )
+
+    return {
+        "message": "✅ École associée avec succès (bidirectionnel)",
+        "apprenti_id": data.apprenti_id,
+        "ecole": ecole_info,
+        "apprenti_ajoute_a_ecole": apprenti_info,
+    }
+
+# ✅ Associer une ENTREPRISE à un apprenti (et inversement)
+@admin_api.post("/associer-entreprise_externe")
+async def associer_entreprise(data: AssocierEntrepriseRequest):
+    db = database.db
+    if db is None:
+        raise HTTPException(status_code=500, detail="Connexion DB absente")
+
+    apprenti_collection = get_collection_from_role("apprenti")
+    entreprise_collection = get_collection_from_role("entreprise_externe")
+
+    # Vérifications d'existence
+    apprenti = await apprenti_collection.find_one({"_id": ObjectId(data.apprenti_id)})
+    if not apprenti:
+        raise HTTPException(status_code=404, detail="Apprenti inexistant")
+
+    entreprise = await entreprise_collection.find_one({"_id": ObjectId(data.entreprise_id)})
+    if not entreprise:
+        raise HTTPException(status_code=404, detail="Entreprise inexistante")
+
+    # Infos structurées
+    entreprise_info = {
+        "entreprise_id": str(entreprise["_id"]),
+        "raisonSociale": entreprise.get("raisonSociale"),
+        "siret": entreprise.get("siret"),
+        "email": entreprise.get("email"),
+        "adresse": entreprise.get("adresse"),
+    }
+    apprenti_info = {
+        "apprenti_id": str(apprenti["_id"]),
+        "first_name": apprenti.get("first_name"),
+        "last_name": apprenti.get("last_name"),
+        "email": apprenti.get("email"),
+        "phone": apprenti.get("phone"),
+        "annee_academique": apprenti.get("annee_academique"),
+    }
+
+    # Mise à jour côté apprenti
+    res_apprenti = await apprenti_collection.update_one(
+        {"_id": ObjectId(data.apprenti_id)},
+        {"$set": {"entreprise_externe": entreprise_info}}
+    )
+    if res_apprenti.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Apprenti non trouvé")
+
+    # Mise à jour côté entreprise (liste des apprentis)
+    await entreprise_collection.update_one(
+        {"_id": ObjectId(data.entreprise_id)},
+        {"$pull": {"apprentis": {"apprenti_id": str(apprenti["_id"])}}}
+    )
+    await entreprise_collection.update_one(
+        {"_id": ObjectId(data.entreprise_id)},
+        {"$addToSet": {"apprentis": apprenti_info}}
+    )
+
+    return {
+        "message": "✅ Entreprise externe associée avec succès (bidirectionnel)",
+        "apprenti_id": data.apprenti_id,
+        "entreprise_externe": entreprise_info,
+        "apprenti_ajoute_a_entreprise_externe": apprenti_info,
     }
 
 @admin_api.post("/associer-responsable-cursus")

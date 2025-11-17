@@ -5,7 +5,15 @@ from bson import ObjectId
 from models import UserUpdateModel
 
 
-ROLES_VALIDES = ["apprenti", "tuteur_pedagogique", "coordinatrice", "responsable_cursus"]
+ROLES_VALIDES = [
+    "apprenti",
+    "tuteur_pedagogique",
+    "maitre_apprentissage",
+    "coordinatrice",
+    "responsable_cursus",
+    "ecole",
+    "entreprise_externe",
+]
 
 async def get_apprentis_by_annee_academique(annee_academique: str):
     if database.db is None:

@@ -1,4 +1,4 @@
-from entreprise.models import HealthResponse, Entity
+from models import HealthResponse, Entity
 import common.db as database   # ← importer le module complet
 from fastapi import APIRouter, HTTPException
 from bson import ObjectId

@@ -11,7 +11,9 @@ MICROSERVICES = [
     {"name": "auth", "path": "auth", "module": "main"},
     {"name": "admin", "path": "admin", "module": "main"},
     {"name": "responsable_cursus", "path": "responsable_cursus", "module": "main"},
-]
+    {"name": "entreprise_externe", "path": "entreprise-externe", "module": "main"},
+    {"name": "ecole", "path": "ecole", "module": "main"},
+]   
 
 processes = []
 service_ports = {}
