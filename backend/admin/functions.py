@@ -34,13 +34,10 @@ ROLE_REFERENCES = {
         "apprenti_field": "responsable_cursus",
         "id_field": "responsable_cursus_id",
     },
-}
-
-ROLE_REFERENCES = {
-    "tuteur_pedagogique": {"apprenti_field": "tuteur", "id_field": "tuteur_id"},
-    "maitre_apprentissage": {"apprenti_field": "maitre", "id_field": "maitre_id"},
-    "coordinatrice": {"apprenti_field": "coordinatrice", "id_field": "coordinatrice_id"},
-    "responsable_cursus": {"apprenti_field": "responsable_cursus", "id_field": "responsable_cursus_id"},
+    "entreprise": {
+        "apprenti_field": "company",
+        "id_field": "entreprise_id",
+    },
 }
 
 
@@ -170,6 +167,11 @@ async def supprimer_utilisateur_par_role_et_id(role: str, user_id: str):
             {"responsable_cursus.responsable_cursus_id": str(object_id)},
             {"$unset": {"responsable_cursus": ""}}
         )
+    elif role == "entreprise":
+        await apprenti_collection.update_many(
+            {"company.entreprise_id": str(object_id)},
+            {"$unset": {"company": ""}}
+        )
 
     return {
         "message": f"✅ Utilisateur '{role}' supprimé avec succès",
@@ -211,13 +213,23 @@ async def modifier_utilisateur_par_role_et_id(role: str, user_id: str, updates: 
         apprenti_collection = database.db["users_apprenti"]
         apprenti_field = reference_config["apprenti_field"]
         id_field = reference_config["id_field"]
-        reference_data = {
-            id_field: str(object_id),
-            "first_name": updated_document.get("first_name"),
-            "last_name": updated_document.get("last_name"),
-            "email": updated_document.get("email"),
-            "phone": updated_document.get("phone"),
-        }
+        if role == "entreprise":
+            reference_data = {
+                id_field: str(object_id),
+                "name": updated_document.get("raisonSociale") or updated_document.get("email") or "Entreprise partenaire",
+                "address": updated_document.get("adresse") or "Adresse non renseign�e",
+                "dates": updated_document.get("dates") or "P�riode non renseign�e",
+                "siret": updated_document.get("siret"),
+                "email": updated_document.get("email"),
+            }
+        else:
+            reference_data = {
+                id_field: str(object_id),
+                "first_name": updated_document.get("first_name"),
+                "last_name": updated_document.get("last_name"),
+                "email": updated_document.get("email"),
+                "phone": updated_document.get("phone"),
+            }
 
         await apprenti_collection.update_many(
             {f"{apprenti_field}.{id_field}": str(object_id)},

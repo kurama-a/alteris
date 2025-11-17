@@ -1,7 +1,7 @@
 import React from "react";
 import { useAuth } from "../auth/Permissions";
 import type { UserSummary } from "../auth/Permissions";
-import { AUTH_API_URL, ADMIN_API_URL, fetchJson } from "../config";
+import { AUTH_API_URL, ADMIN_API_URL, ENTREPRISE_API_URL, fetchJson } from "../config";
 
 type EditableUser = UserSummary & {
   firstName?: string;
@@ -11,6 +11,24 @@ type EditableUser = UserSummary & {
 
 type UsersResponse = {
   users: UserSummary[];
+};
+
+type Enterprise = {
+  id: string;
+  raisonSociale: string;
+  siret?: string;
+  adresse?: string;
+  email?: string;
+};
+
+type EnterpriseListResponse = {
+  entreprises: Array<{
+    _id: string;
+    raisonSociale?: string;
+    siret?: string;
+    adresse?: string;
+    email?: string;
+  }>;
 };
 
 type RoleOption = {
@@ -28,6 +46,15 @@ type CreateUserDraft = {
   role: string;
   tutorId: string;
   masterId: string;
+  enterpriseId: string;
+};
+
+type EnterpriseFormState = {
+  id: string;
+  raisonSociale: string;
+  siret: string;
+  adresse: string;
+  email: string;
 };
 
 function normalizeRoleLabel(label?: string): string {
@@ -72,7 +99,16 @@ const createUserTemplate = (): CreateUserDraft => ({
   role: DEFAULT_ROLE_VALUE,
   tutorId: "",
   masterId: "",
+  enterpriseId: "",
 });
+
+const emptyEnterpriseForm: EnterpriseFormState = {
+  id: "",
+  raisonSociale: "",
+  siret: "",
+  adresse: "",
+  email: "",
+};
 
 function inferRoleFromSummary(user: UserSummary): string | undefined {
   if (user.role) {
@@ -199,8 +235,15 @@ export default function Admin() {
   const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
   const [createDraft, setCreateDraft] = React.useState<CreateUserDraft>(() => createUserTemplate());
   const [isCreatingUser, setIsCreatingUser] = React.useState(false);
+  const [enterprises, setEnterprises] = React.useState<Enterprise[]>([]);
+  const [isLoadingEnterprises, setIsLoadingEnterprises] = React.useState(false);
+  const [enterpriseError, setEnterpriseError] = React.useState<string | null>(null);
+  const [enterpriseSuccess, setEnterpriseSuccess] = React.useState<string | null>(null);
+  const [enterpriseForm, setEnterpriseForm] = React.useState<EnterpriseFormState>(emptyEnterpriseForm);
+  const [isSavingEnterprise, setIsSavingEnterprise] = React.useState(false);
   const [editTutorId, setEditTutorId] = React.useState("");
   const [editMasterId, setEditMasterId] = React.useState("");
+  const [editEnterpriseId, setEditEnterpriseId] = React.useState("");
 
   const mapUserToEditable = React.useCallback(
     (user: UserSummary): EditableUser => {
@@ -216,6 +259,37 @@ export default function Admin() {
     },
     []
   );
+
+  const loadEnterprises = React.useCallback(async () => {
+    if (!token) {
+      setEnterprises([]);
+      setEnterpriseError(null);
+      return;
+    }
+    setIsLoadingEnterprises(true);
+    setEnterpriseError(null);
+    try {
+      const payload = await fetchJson<EnterpriseListResponse>(`${ENTREPRISE_API_URL}/`, { token });
+      const mapped =
+        payload.entreprises
+          ?.map((enterprise) => ({
+            id: enterprise._id ?? "",
+            raisonSociale: enterprise.raisonSociale ?? "Entreprise sans nom",
+            siret: enterprise.siret ?? "",
+            adresse: enterprise.adresse ?? "",
+            email: enterprise.email ?? "",
+          }))
+          .filter((enterprise): enterprise is Enterprise => Boolean(enterprise.id)) ?? [];
+      setEnterprises(mapped);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Impossible de charger les entreprises.";
+      setEnterpriseError(message);
+      setEnterprises([]);
+    } finally {
+      setIsLoadingEnterprises(false);
+    }
+  }, [token]);
 
   const refreshUsers = React.useCallback(async () => {
     if (!token) {
@@ -249,6 +323,26 @@ export default function Admin() {
   React.useEffect(() => {
     refreshUsers();
   }, [refreshUsers]);
+
+  React.useEffect(() => {
+    loadEnterprises();
+  }, [loadEnterprises]);
+
+  React.useEffect(() => {
+    setCreateDraft((current) => {
+      if (!current.enterpriseId) return current;
+      return enterprises.some((enterprise) => enterprise.id === current.enterpriseId)
+        ? current
+        : { ...current, enterpriseId: "" };
+    });
+  }, [enterprises]);
+
+  React.useEffect(() => {
+    if (!editEnterpriseId) return;
+    if (!enterprises.some((enterprise) => enterprise.id === editEnterpriseId)) {
+      setEditEnterpriseId("");
+    }
+  }, [enterprises, editEnterpriseId]);
 
   const tutors = React.useMemo(() => users.filter((user) => user.role === "tuteur_pedagogique"), [users]);
   const masters = React.useMemo(() => users.filter((user) => user.role === "maitre_apprentissage"), [users]);
@@ -286,8 +380,14 @@ export default function Admin() {
       lastName: user.lastName ?? names.lastName ?? "",
       phone: user.phone ?? "",
     });
-    setEditTutorId("");
-    setEditMasterId("");
+    const existingTutorId =
+      (user as EditableUser & { tuteur?: { tuteur_id?: string } }).tuteur?.tuteur_id ?? "";
+    const existingMasterId =
+      (user as EditableUser & { maitre?: { maitre_id?: string } }).maitre?.maitre_id ?? "";
+    const existingEnterpriseId = user.company?.entreprise_id ?? "";
+    setEditTutorId(existingTutorId);
+    setEditMasterId(existingMasterId);
+    setEditEnterpriseId(existingEnterpriseId);
   }, []);
 
   const closeEditModal = React.useCallback(() => {
@@ -295,7 +395,89 @@ export default function Admin() {
     setEditDraft(null);
     setEditTutorId("");
     setEditMasterId("");
+    setEditEnterpriseId("");
   }, []);
+
+  const handleEnterpriseFormChange = React.useCallback(
+    (key: keyof EnterpriseFormState, value: string) => {
+      setEnterpriseForm((current) => ({ ...current, [key]: value }));
+      setEnterpriseError(null);
+      setEnterpriseSuccess(null);
+    },
+    []
+  );
+
+  const handleEditEnterprise = React.useCallback((enterprise: Enterprise) => {
+    setEnterpriseForm({
+      id: enterprise.id,
+      raisonSociale: enterprise.raisonSociale ?? "",
+      siret: enterprise.siret ?? "",
+      adresse: enterprise.adresse ?? "",
+      email: enterprise.email ?? "",
+    });
+    setEnterpriseError(null);
+    setEnterpriseSuccess(null);
+  }, []);
+
+  const cancelEnterpriseEdit = React.useCallback(() => {
+    setEnterpriseForm(emptyEnterpriseForm);
+    setEnterpriseError(null);
+    setEnterpriseSuccess(null);
+  }, []);
+
+  const handleEnterpriseSubmit = React.useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!token) {
+        setEnterpriseError("Authentification requise pour g�rer les entreprises.");
+        return;
+      }
+      const raison = enterpriseForm.raisonSociale.trim();
+      const siret = enterpriseForm.siret.trim();
+      const email = enterpriseForm.email.trim();
+      if (!raison || !siret || !email) {
+        setEnterpriseError("Renseignez la raison sociale, le SIRET et l'email.");
+        return;
+      }
+      setIsSavingEnterprise(true);
+      setEnterpriseError(null);
+      setEnterpriseSuccess(null);
+      const isEditingEnterprise = Boolean(enterpriseForm.id);
+      const body: Record<string, string> = {
+        raisonSociale: raison,
+        siret,
+        email,
+      };
+      if (enterpriseForm.adresse.trim()) {
+        body.adresse = enterpriseForm.adresse.trim();
+      }
+      const endpoint = isEditingEnterprise
+        ? `${ENTREPRISE_API_URL}/${enterpriseForm.id}`
+        : `${ENTREPRISE_API_URL}/`;
+      const method = isEditingEnterprise ? "PUT" : "POST";
+      try {
+        await fetchJson(endpoint, {
+          method,
+          token,
+          body: JSON.stringify(body),
+        });
+        setEnterpriseSuccess(
+          isEditingEnterprise ? "Entreprise mise � jour." : "Entreprise ajout�e."
+        );
+        setEnterpriseForm(emptyEnterpriseForm);
+        await loadEnterprises();
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Impossible d'enregistrer l'entreprise.";
+        setEnterpriseError(message);
+      } finally {
+        setIsSavingEnterprise(false);
+      }
+    },
+    [token, enterpriseForm, loadEnterprises]
+  );
 
   const handleEditChange = React.useCallback(
     (key: keyof EditableUser, value: string) => {
@@ -306,6 +488,11 @@ export default function Admin() {
         }
         if (key === "role") {
           const option = ROLE_VALUE_TO_OPTION[value];
+          if (value !== "apprenti") {
+            setEditTutorId("");
+            setEditMasterId("");
+            setEditEnterpriseId("");
+          }
           return {
             ...current,
             role: value,
@@ -367,6 +554,18 @@ export default function Admin() {
             })
           );
         }
+        if (editEnterpriseId) {
+          associationCalls.push(
+            fetchJson(`${ADMIN_API_URL}/associer-entreprise`, {
+              method: "POST",
+              token,
+              body: JSON.stringify({
+                apprenti_id: editDraft.id,
+                entreprise_id: editEnterpriseId,
+              }),
+            })
+          );
+        }
         if (associationCalls.length) {
           await Promise.all(associationCalls);
         }
@@ -380,7 +579,7 @@ export default function Admin() {
     } finally {
       setIsSavingEdit(false);
     }
-  }, [editDraft, editUser, token, closeEditModal, refreshUsers, editTutorId, editMasterId]);
+  }, [editDraft, editUser, token, closeEditModal, refreshUsers, editTutorId, editMasterId, editEnterpriseId]);
 
   const requestDelete = React.useCallback((ids: string[]) => {
     setActionError(null);
@@ -434,21 +633,20 @@ export default function Admin() {
     setIsCreateModalOpen(false);
   }, []);
 
-  const handleCreateChange = React.useCallback(
-    (key: keyof CreateUserDraft, value: string) => {
-      setCreateDraft((current) => {
-        if (key === "role" && value !== "apprenti") {
-          return { ...current, role: value, tutorId: "", masterId: "" };
-        }
-        return { ...current, [key]: value };
-      });
+  const handleCreateChange = React.useCallback((key: keyof CreateUserDraft, value: string) => {
+    setCreateDraft((current) => {
       if (key === "role" && value !== "apprenti") {
-        setEditTutorId("");
-        setEditMasterId("");
+        return {
+          ...current,
+          role: value,
+          tutorId: "",
+          masterId: "",
+          enterpriseId: "",
+        };
       }
-    },
-    []
-  );
+      return { ...current, [key]: value };
+    });
+  }, []);
 
   const submitCreate = React.useCallback(async () => {
     if (!token) {
@@ -495,6 +693,18 @@ export default function Admin() {
               body: JSON.stringify({
                 apprenti_id: newUserId,
                 maitre_id: createDraft.masterId,
+              }),
+            })
+          );
+        }
+        if (createDraft.enterpriseId) {
+          associationCalls.push(
+            fetchJson(`${ADMIN_API_URL}/associer-entreprise`, {
+              method: "POST",
+              token,
+              body: JSON.stringify({
+                apprenti_id: newUserId,
+                entreprise_id: createDraft.enterpriseId,
               }),
             })
           );
@@ -568,6 +778,183 @@ export default function Admin() {
           Chargement des utilisateurs...
         </div>
       ) : null}
+
+      <section
+        style={{
+          marginBottom: 24,
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: 16,
+        }}
+      >
+        <div
+          style={{
+            border: "1px solid #e2e8f0",
+            borderRadius: 12,
+            padding: 16,
+            background: "#fff",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
+          <h2 style={{ margin: 0, fontSize: 18 }}>Gestion des entreprises partenaires</h2>
+          <p style={{ margin: 0, color: "#475569" }}>Ajoutez une entreprise pour l'associer aux apprentis.</p>
+          <form onSubmit={handleEnterpriseSubmit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span>Raison sociale</span>
+              <input
+                type="text"
+                value={enterpriseForm.raisonSociale}
+                onChange={(event) => handleEnterpriseFormChange("raisonSociale", event.target.value)}
+                style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5f5" }}
+                required
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span>SIRET</span>
+              <input
+                type="text"
+                value={enterpriseForm.siret}
+                onChange={(event) => handleEnterpriseFormChange("siret", event.target.value)}
+                style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5f5" }}
+                required
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span>Email de contact</span>
+              <input
+                type="email"
+                value={enterpriseForm.email}
+                onChange={(event) => handleEnterpriseFormChange("email", event.target.value)}
+                style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5f5" }}
+                required
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span>Adresse</span>
+              <input
+                type="text"
+                value={enterpriseForm.adresse}
+                onChange={(event) => handleEnterpriseFormChange("adresse", event.target.value)}
+                style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5f5" }}
+              />
+            </label>
+            {enterpriseError && <p className="form-error">{enterpriseError}</p>}
+            {enterpriseSuccess && (
+              <p style={{ color: "#15803d", fontSize: 13, margin: 0 }}>{enterpriseSuccess}</p>
+            )}
+            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+              {enterpriseForm.id && (
+                <button
+                  type="button"
+                  onClick={cancelEnterpriseEdit}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 6,
+                    border: "1px solid #cbd5f5",
+                    background: "#fff",
+                    cursor: "pointer",
+                  }}
+                >
+                  Annuler
+                </button>
+              )}
+              <button
+                type="submit"
+                disabled={isSavingEnterprise}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 6,
+                  border: "1px solid #0ea5e9",
+                  background: isSavingEnterprise ? "#bae6fd" : "#0ea5e9",
+                  color: "#fff",
+                  cursor: isSavingEnterprise ? "wait" : "pointer",
+                }}
+              >
+                {isSavingEnterprise
+                  ? "Enregistrement..."
+                  : enterpriseForm.id
+                  ? "Mettre a jour"
+                  : "Ajouter l'entreprise"}
+              </button>
+            </div>
+          </form>
+        </div>
+        <div
+          style={{
+            border: "1px solid #e2e8f0",
+            borderRadius: 12,
+            padding: 16,
+            background: "#fff",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
+          <h3 style={{ margin: 0, fontSize: 16 }}>Entreprises enregistrees</h3>
+          {isLoadingEnterprises ? (
+            <p>Chargement des entreprises...</p>
+          ) : enterprises.length === 0 ? (
+            <p style={{ margin: 0, color: "#475569" }}>
+              {enterpriseError ?? "Aucune entreprise enregistree pour le moment."}
+            </p>
+          ) : (
+            <ul
+              style={{
+                listStyle: "none",
+                padding: 0,
+                margin: 0,
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              {enterprises.map((enterprise) => (
+                <li
+                  key={enterprise.id}
+                  style={{
+                    border: "1px solid #e2e8f0",
+                    borderRadius: 10,
+                    padding: 12,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    alignItems: "center",
+                  }}
+                >
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <strong>{enterprise.raisonSociale}</strong>
+                    <span style={{ color: "#475569", fontSize: 13 }}>
+                      SIRET : {enterprise.siret || "Non renseigne"}
+                    </span>
+                    {enterprise.adresse && (
+                      <span style={{ color: "#475569", fontSize: 13 }}>{enterprise.adresse}</span>
+                    )}
+                    {enterprise.email && (
+                      <span style={{ color: "#475569", fontSize: 13 }}>{enterprise.email}</span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleEditEnterprise(enterprise)}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 6,
+                      border: "1px solid #2563eb",
+                      background: "#2563eb",
+                      color: "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Modifier
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
 
       <section style={{ marginBottom: 16, display: "flex", gap: 12 }}>
         <button
@@ -783,6 +1170,27 @@ export default function Admin() {
                     <small style={{ color: "#b45309" }}>Aucun maître disponible pour le moment.</small>
                   )}
                 </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span>Entreprise partenaire</span>
+                  <select
+                    value={createDraft.enterpriseId}
+                    onChange={(event) => handleCreateChange("enterpriseId", event.target.value)}
+                    style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                  >
+                    <option value="">Aucune entreprise</option>
+                    {enterprises.map((enterprise) => (
+                      <option key={enterprise.id} value={enterprise.id}>
+                        {enterprise.raisonSociale}
+                        {enterprise.email ? ` - ${enterprise.email}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {enterprises.length === 0 && (
+                    <small style={{ color: "#b45309" }}>
+                      Ajoutez une entreprise pour pouvoir l'associer.
+                    </small>
+                  )}
+                </label>
               </>
             )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
@@ -918,6 +1326,27 @@ export default function Admin() {
                   </select>
                   {masters.length === 0 && (
                     <small style={{ color: "#b45309" }}>Aucun maître disponible pour le moment.</small>
+                  )}
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span>Entreprise partenaire</span>
+                  <select
+                    value={editEnterpriseId}
+                    onChange={(event) => setEditEnterpriseId(event.target.value)}
+                    style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                  >
+                    <option value="">Aucune entreprise</option>
+                    {enterprises.map((enterprise) => (
+                      <option key={enterprise.id} value={enterprise.id}>
+                        {enterprise.raisonSociale}
+                        {enterprise.email ? ` - ${enterprise.email}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {enterprises.length === 0 && (
+                    <small style={{ color: "#b45309" }}>
+                      Ajoutez une entreprise pour pouvoir l'associer.
+                    </small>
                   )}
                 </label>
               </>

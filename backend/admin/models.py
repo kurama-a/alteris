@@ -29,6 +29,10 @@ class PromotionUpsertRequest(BaseModel):
     next_milestone: Optional[str] = Field(None, description="Prochaine échéance ou jalon important")
     responsable_id: Optional[str] = Field(None, description="ID du responsable de cursus à associer")
 
+class AssocierEntrepriseRequest(BaseModel):
+    apprenti_id: str = Field(..., description="ID de l'apprenti � associer")
+    entreprise_id: str = Field(..., description="ID de l'entreprise � associer")
+
 class UserUpdateModel(BaseModel):
     first_name: Optional[str] = Field(None, example="Ali")
     last_name: Optional[str] = Field(None, example="Bamba")

@@ -15,6 +15,25 @@ export type CompanyInfo = {
   name: string;
   dates: string;
   address: string;
+  entreprise_id?: string;
+  siret?: string;
+  email?: string;
+};
+
+export type TutorContact = {
+  tuteur_id?: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
+};
+
+export type MasterContact = {
+  maitre_id?: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
 };
 
 export type SchoolInfo = {
@@ -62,6 +81,8 @@ export type Me = {
   company?: CompanyInfo;
   school?: SchoolInfo;
   tutors?: TutorSet | null;
+  tuteur?: TutorContact;
+  maitre?: MasterContact;
   journalHeroImageUrl?: string;
   apprentices?: ApprenticeJournal[];
 };
@@ -94,7 +115,22 @@ type MeResponse = {
   me: Me;
 };
 
-export type UserSummary = Pick<Me, "id" | "email" | "fullName" | "roleLabel" | "perms" | "roles" | "role" | "firstName" | "lastName" | "phone">;
+export type UserSummary = Pick<
+  Me,
+  | "id"
+  | "email"
+  | "fullName"
+  | "roleLabel"
+  | "perms"
+  | "roles"
+  | "role"
+  | "firstName"
+  | "lastName"
+  | "phone"
+  | "company"
+  | "tuteur"
+  | "maitre"
+>;
 
 const SESSION_STORAGE_KEY = "alteris:auth:session";
 

@@ -22,6 +22,9 @@
 18. En tant qu’administrateur, je peux visualiser les statistiques d’une promotion (nombre d’apprentis, coordinateurs, jalon) afin de surveiller son état.
 19. En tant qu’administrateur, je peux modifier le responsable de cursus d’une promotion depuis sa carte afin de réaffecter le suivi.
 20. En tant qu’administrateur, je peux afficher la liste des membres d’une promotion afin de connaître les apprentis qui la composent.
+21. En tant qu’administrateur, je peux créer une entreprise partenaire depuis l’interface d’administration afin de préparer son association avec des apprentis.
+22. En tant qu’administrateur, je peux modifier les informations d’une entreprise partenaire depuis l’interface d’administration afin de tenir à jour ses coordonnées.
+23. En tant qu’administrateur, je peux associer une entreprise partenaire à un apprenti afin que son journal affiche l’organisation d’accueil correcte.
 
 ## Responsable de cursus
 

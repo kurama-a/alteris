@@ -3,7 +3,13 @@ from pydantic import BaseModel
 from bson import ObjectId
 import common.db as database
 from models import AssocierTuteurRequest,UserUpdateModel
-from models import AssocierResponsableCursusRequest,AssocierResponsablePromoRequest,AssocierMaitreRequest,PromotionUpsertRequest
+from models import (
+    AssocierEntrepriseRequest,
+    AssocierResponsableCursusRequest,
+    AssocierResponsablePromoRequest,
+    AssocierMaitreRequest,
+    PromotionUpsertRequest,
+)
 from functions import get_apprentis_by_annee_academique ,supprimer_utilisateur_par_role_et_id,modifier_utilisateur_par_role_et_id,list_promotions,create_or_update_promotion,list_responsables_cursus,list_all_apprentis
 def get_collection_name_by_role(role: str) -> str:
     return f"users_{role.lower().replace(' ', '_')}"
@@ -116,6 +122,45 @@ async def associer_maitre(data: AssocierMaitreRequest):
         "message": "✅ Maître d’apprentissage associé avec succès",
         "apprenti_id": data.apprenti_id,
         "maitre": maitre_info
+    }
+
+@admin_api.post("/associer-entreprise")
+async def associer_entreprise(data: AssocierEntrepriseRequest):
+    apprenti_collection = get_collection_from_role("apprenti")
+    entreprise_collection = get_collection_from_role("entreprise")
+
+    try:
+        entreprise = await entreprise_collection.find_one({"_id": ObjectId(data.entreprise_id)})
+    except Exception:
+        entreprise = None
+
+    if not entreprise:
+        raise HTTPException(status_code=404, detail="Entreprise introuvable")
+
+    company_info = {
+        "entreprise_id": str(entreprise["_id"]),
+        "name": entreprise.get("raisonSociale") or entreprise.get("email") or "Entreprise partenaire",
+        "address": entreprise.get("adresse") or "Adresse non renseign�e",
+        "dates": entreprise.get("dates") or "P�riode non renseign�e",
+        "siret": entreprise.get("siret"),
+        "email": entreprise.get("email"),
+    }
+
+    try:
+        result = await apprenti_collection.update_one(
+            {"_id": ObjectId(data.apprenti_id)},
+            {"$set": {"company": company_info}}
+        )
+    except Exception:
+        raise HTTPException(status_code=400, detail="Identifiant apprenti invalide")
+
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Apprenti introuvable")
+
+    return {
+        "message": "? Entreprise associ�e avec succ�s",
+        "apprenti_id": data.apprenti_id,
+        "company": company_info
     }
 
 @admin_api.post("/associer-responsable-cursus")

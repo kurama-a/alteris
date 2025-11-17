@@ -25,6 +25,15 @@ def serialize(document):
     }
 
 
+async def lister_entreprises():
+    collection = get_collection("entreprise")
+    entreprises = []
+    cursor = collection.find().sort("raisonSociale", 1)
+    async for document in cursor:
+        entreprises.append(serialize(document))
+    return {"entreprises": entreprises}
+
+
 async def recuperer_infos_entreprise_completes(entreprise_id: str):
     try:
         entreprise_collection = get_collection("entreprise")

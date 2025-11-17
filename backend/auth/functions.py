@@ -156,6 +156,8 @@ def build_me_from_document(user: Dict[str, Any], role: str) -> Dict[str, Any]:
         "tutors",
         "journalHeroImageUrl",
         "apprentices",
+        "tuteur",
+        "maitre",
     )
     for key in optional_keys:
         value = user.get(key)
@@ -180,6 +182,7 @@ DOMAINES_PAR_PROFIL = {
 APPRENTICE_LINK_FIELDS = {
     "tuteur_pedagogique": "tuteur.tuteur_id",
     "maitre_apprentissage": "maitre.maitre_id",
+    "entreprise": "company.entreprise_id",
 }
 
 # ------------------------
