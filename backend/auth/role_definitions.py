@@ -19,7 +19,7 @@ class RoleDefinition(TypedDict, total=False):
 ROLE_DEFINITIONS: Dict[str, RoleDefinition] = {
     "apprenti": {
         "roles": ["Apprentis"],
-        "role_label": "Apprentie",
+        "role_label": "Apprenti",
         "perms": [
             "journal:read:own",
             "journal:create:own",
@@ -57,6 +57,7 @@ ROLE_DEFINITIONS: Dict[str, RoleDefinition] = {
             "promotion:manage",
             "meeting:participate",
             "user:manage",
+            "jury:read",
         ],
     },
     "entreprise": {
@@ -88,12 +89,18 @@ ROLE_DEFINITIONS: Dict[str, RoleDefinition] = {
             "journal:read:all",
         ],
     },
-        "professeur": {
+    "professeur": {
         "roles": ["Professeur ESEO"],
         "role_label": "Professeur jury ESEO",
         "perms": [
             "jury:read",
-            "journal:read:all",
+        ],
+    },
+    "intervenant": {
+        "roles": ["Intervenant"],
+        "role_label": "Intervenant professionnel",
+        "perms": [
+            "jury:read",
         ],
     },
     "administrateur": {
@@ -104,6 +111,7 @@ ROLE_DEFINITIONS: Dict[str, RoleDefinition] = {
             "doc:read",
             "promotion:manage",
             "journal:read:all",
+            "jury:read",
         ],
     },
 }

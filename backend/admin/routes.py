@@ -10,7 +10,7 @@ from models import (
     AssocierResponsablePromoRequest,
     AssocierMaitreRequest,
     PromotionUpsertRequest,
-    AssocierEcoleRequest,
+    #AssocierEcoleRequest,
     AssocierEntrepriseRequest,
     AssocierJuryRequest,
 )

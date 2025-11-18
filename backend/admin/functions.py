@@ -12,10 +12,10 @@ ROLES_VALIDES = [
     "responsable_cursus",
     "entreprise",
     "jury",
+    "professeur",
+    "intervenant",
     "admin",
     "ecole",
-    "professeur",
-    "jury",
 ]
 
 ROLE_REFERENCES = {

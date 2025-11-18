@@ -15,6 +15,8 @@ MICROSERVICES = [
     {"name": "ecole", "path": "ecole", "module": "main", "port": 8007},
     {"name": "entreprise", "path": "entreprise", "module": "main", "port": 8008},
     {"name": "responsableformation", "path": "responsableformation", "module": "main", "port": 8009},
+    {"name": "jury", "path": "jury", "module": "main", "port": 8010},
+    {"name": "professeur", "path": "professeur", "module": "main", "port": 8011},
 ]
 
 processes: Dict[str, subprocess.Popen] = {}

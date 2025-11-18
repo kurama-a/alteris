@@ -12,6 +12,7 @@ class UserRole(str, Enum):
     entreprise = "entreprise"
     admin = "administrateur"
     professeur = "professeur"
+    intervenant = "intervenant"
     jury = "jury"
 
 # ✅ Schéma de requête
