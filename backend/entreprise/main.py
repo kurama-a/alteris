@@ -7,7 +7,7 @@ from common.app_factory import create_app
 from routes import entreprise_api
 
 app = create_app(
-    service_name="Entreprise_Externe",
+    service_name="Entreprise",
     api=entreprise_api,
-    prefix="/entreprise_externe"
+    prefix="/entreprise"
 )

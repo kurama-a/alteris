@@ -384,13 +384,13 @@ async def list_users() -> Dict[str, Any]:
 
 
 # ------------------------
-# REGISTER ENTITY (ecole, entreprise_externe)
+# REGISTER ENTITY (ecole, entreprise)
 # ------------------------
 async def register_entity(entity: Entity) -> Dict:
-    """Crée une entité dans la collection correspondant à son rôle (ecole, entreprise_externe)."""
+    """Crée une entité dans la collection correspondant à son rôle (ecole, entreprise)."""
     role = entity.role.lower()
-    if role not in {"ecole", "entreprise_externe"}:
-        raise HTTPException(status_code=400, detail="Rôle d'entité invalide (attendu: ecole ou entreprise_externe)")
+    if role not in {"ecole", "entreprise"}:
+        raise HTTPException(status_code=400, detail="Rôle d'entité invalide (attendu: ecole ou entreprise)")
 
     collection = get_collection_from_role(role)
 
