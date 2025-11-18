@@ -11,6 +11,8 @@ class UserRole(str, Enum):
     tuteur_pedagogique = "tuteur_pedagogique"
     entreprise = "entreprise"
     admin = "administrateur"
+    professeur = "professeur"
+    jury = "jury"
 
 # ✅ Schéma de requête
 class User(BaseModel):

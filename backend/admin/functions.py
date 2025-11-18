@@ -13,6 +13,9 @@ ROLES_VALIDES = [
     "entreprise",
     "jury",
     "admin",
+    "ecole",
+    "professeur",
+    "jury",
 ]
 
 ROLE_REFERENCES = {
