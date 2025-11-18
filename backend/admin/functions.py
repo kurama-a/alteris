@@ -13,6 +13,8 @@ ROLES_VALIDES = [
     "responsable_cursus",
     "ecole",
     "entreprise_externe",
+    "professeur",
+    "jury",
 ]
 
 async def get_apprentis_by_annee_academique(annee_academique: str):

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException,Body
 from pydantic import BaseModel
+from datetime import datetime
 from bson import ObjectId
 import common.db as database
 from models import (
@@ -10,6 +11,7 @@ from models import (
     AssocierMaitreRequest,
     AssocierEcoleRequest,
     AssocierEntrepriseRequest,
+    AssocierJuryRequest,
 )
 from functions import get_apprentis_by_annee_academique ,supprimer_utilisateur_par_role_et_id,modifier_utilisateur_par_role_et_id
 def get_collection_name_by_role(role: str) -> str:
@@ -376,3 +378,93 @@ async def update_user(role: str, user_id: str, payload: dict = Body(...)):
 @admin_api.put("/user/{role}/{user_id}", summary="Modifier un utilisateur (apprenti, tuteur, etc.)")
 async def update_user(role: str, user_id: str, payload: dict):
     return await modifier_utilisateur_par_role_et_id(role, user_id, payload)
+
+
+
+# ✅ Route POST /associer-jury
+@admin_api.post("/associer-jury")
+async def associer_jury(data: AssocierJuryRequest):
+    try:
+        apprenti_collection = get_collection_from_role("apprenti")
+        professeur_collection = get_collection_from_role("professeur")
+        jury_collection = get_collection_from_role("jury")
+
+        # 1️⃣ Vérifie les entités
+        apprenti = await apprenti_collection.find_one({"_id": ObjectId(data.apprenti_id)})
+        if not apprenti:
+            raise HTTPException(status_code=404, detail="Apprenti inexistant")
+
+        professeur = await professeur_collection.find_one({"_id": ObjectId(data.professeur_id)})
+        if not professeur:
+            raise HTTPException(status_code=404, detail="Professeur inexistant")
+
+        # 2️⃣ Crée (ou réutilise) un jury à partir du professeur
+        existing_jury = await jury_collection.find_one({
+            "$or": [
+                {"professeur_id": str(professeur["_id"])},
+                {"email": professeur.get("email")},
+            ]
+        })
+
+        if not existing_jury:
+            jury_doc = {
+                "first_name": professeur.get("first_name"),
+                "last_name": professeur.get("last_name"),
+                "email": professeur.get("email"),
+                "phone": professeur.get("phone"),
+                "professeur_id": str(professeur["_id"]),
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+            }
+            insert_res = await jury_collection.insert_one(jury_doc)
+            jury = {**jury_doc, "_id": insert_res.inserted_id}
+            created = True
+        else:
+            jury = existing_jury
+            created = False
+
+        jury_info = {
+            "jury_id": str(jury["_id"]),
+            "first_name": jury.get("first_name"),
+            "last_name": jury.get("last_name"),
+            "email": jury.get("email"),
+            "phone": jury.get("phone"),
+        }
+        
+        #3️⃣ Ajoute l'apprenti dans le jury (liste 'apprentis')
+        apprenti_info = {
+            "apprenti_id": str(apprenti["_id"]),
+            "first_name": apprenti.get("first_name"),
+            "last_name": apprenti.get("last_name"),
+            "email": apprenti.get("email"),
+            "phone": apprenti.get("phone"),
+            "annee_academique": apprenti.get("annee_academique"),
+        }
+        
+                # 4️⃣ Ajoute l'apprenti dans le jury (liste 'apprentis')
+        jury_info = {
+            "jury_id": str(jury["_id"]),
+            "first_name": jury.get("first_name"),
+            "last_name": jury.get("last_name"),
+            "email": jury.get("email"),
+        }
+        await apprenti_collection.update_one(
+            {"_id": apprenti["_id"]},
+            {"$pull": {"juries": {"jury_id": str(jury["_id"])}}}
+        )
+        await apprenti_collection.update_one(
+            {"_id": apprenti["_id"]},
+            {"$addToSet": {"juries": jury_info}}
+        )
+
+        return {
+            "message": "✅ Jury associé avec succès",
+            "apprenti_id": data.apprenti_id,
+            "jury": jury_info,
+            "apprenti_ajoute_au_jury": apprenti_info,
+            "jury_cree": created,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur serveur : {str(e)}")
+    

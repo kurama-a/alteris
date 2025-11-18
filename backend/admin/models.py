@@ -30,6 +30,10 @@ class AssocierEntrepriseRequest(BaseModel):
     apprenti_id: str = Field(..., description="ID de l'apprenti à associer")
     entreprise_id: str = Field(..., description="ID de l'entreprise (externe) à associer")
 
+class AssocierJuryRequest(BaseModel):
+    apprenti_id: str = Field(..., description="ID de l'apprenti à associer")
+    professeur_id: str = Field(..., description="ID du professeur à copier en jury")
+
 class UserUpdateModel(BaseModel):
     first_name: Optional[str] = Field(None, example="Ali")
     last_name: Optional[str] = Field(None, example="Bamba")

@@ -49,6 +49,7 @@ async def creer_entretien(data):
     apprenti_collection = get_collection("apprenti")
     tuteur_collection = get_collection("tuteur_pedagogique")
     maitre_collection = get_collection("maitre_apprentissage")
+    jury_collection = get_collection("jury")
 
     # 🔍 1. Récupère l’apprenti
     apprenti = await apprenti_collection.find_one({"_id": ObjectId(data.apprenti_id)})
@@ -58,6 +59,7 @@ async def creer_entretien(data):
     # 🔍 2. Vérifie qu'il a un tuteur et un maître associés
     tuteur = apprenti.get("tuteur")
     maitre = apprenti.get("maitre")
+    jury = apprenti.get("jury")
 
     if not tuteur or not maitre:
         raise HTTPException(status_code=400, detail="Tuteur ou Maître non associé à l’apprenti")
@@ -73,6 +75,8 @@ async def creer_entretien(data):
         "tuteur": tuteur,
         "maitre": maitre
     }
+    if jury:
+        entretien["jury"] = jury
 
     # 💾 4. Ajout dans chaque collection
     await apprenti_collection.update_one(
@@ -90,6 +94,12 @@ async def creer_entretien(data):
         {"$push": {"entretiens": entretien}}
     )
 
+    if jury and "jury_id" in jury:
+        await jury_collection.update_one(
+            {"_id": ObjectId(jury["jury_id"])},
+            {"$push": {"entretiens": entretien}}
+        )
+
     return {
         "message": "✅ Entretien planifié avec succès",
         "entretien": entretien
@@ -101,6 +111,7 @@ async def supprimer_entretien(apprenti_id: str, entretien_id: str):
         apprenti_collection = get_collection("apprenti")
         tuteur_collection = get_collection("tuteur_pedagogique")
         maitre_collection = get_collection("maitre_apprentissage")
+        jury_collection = get_collection("jury")
 
         # 1️⃣ Récupérer l'apprenti
         apprenti = await apprenti_collection.find_one({"_id": ObjectId(apprenti_id)})
@@ -129,12 +140,20 @@ async def supprimer_entretien(apprenti_id: str, entretien_id: str):
                 {"$pull": {"entretiens": {"entretien_id": entretien_id}}}
             )
 
+        # 4️⃣ bis Supprimer aussi dans le jury (si défini)
+        jury_info = apprenti.get("jury", {})
+        if jury_info and "jury_id" in jury_info:
+            await jury_collection.update_one(
+                {"_id": ObjectId(jury_info["jury_id"])},
+                {"$pull": {"entretiens": {"entretien_id": entretien_id}}}
+            )
+
         # 5️⃣ Vérification finale
         if result_apprenti.modified_count == 0:
             raise HTTPException(status_code=404, detail="Entretien non trouvé ou déjà supprimé chez l'apprenti")
 
         return {
-            "message": "🗑️ Entretien supprimé chez l'apprenti, le tuteur et le maître",
+            "message": "🗑️ Entretien supprimé chez l'apprenti, le tuteur, le maître et le jury",
             "entretien_id": entretien_id,
             "apprenti_id": apprenti_id
         }
