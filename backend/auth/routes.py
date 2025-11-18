@@ -1,36 +1,48 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordBearer
-from fastapi.responses import JSONResponse
 
-from auth.models import User, Entity, EmailRequest, PasswordRecoveryRequest, LoginRequest
+from auth.models import (
+    User,
+    Entity,
+    EmailRequest,
+    PasswordRecoveryRequest,
+    LoginRequest,
+    UpdateMeRequest,
+)
 import auth.functions as functions
 
 auth_api = APIRouter(tags=["Auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
-@auth_api.post("/register", summary="Créer un nouvel utilisateur (collection par rôle)")
+@auth_api.post("/register", summary="Creer un nouvel utilisateur (collection par role)")
 async def register(user: User):
-    """Route légère : délègue la logique à functions.register_user"""
+    """Delegue la creation a functions.register_user."""
     return await functions.register_user(user)
 
 
 @auth_api.post("/login", summary="Connexion par email (cherche dans chaque collection)")
 async def login(req: LoginRequest):
-    """Route légère : délègue la logique à functions.login_user"""
+    """Delegue la logique a functions.login_user."""
     return await functions.login_user(req)
 
 
-@auth_api.post("/register-entity", summary="Créer une nouvelle entité (entreprise, ecole, ...)")
+@auth_api.post("/register-entity", summary="Creer une nouvelle entite (entreprise, ecole, ...)")
 async def register_entity(entity: Entity):
-    """Route légère : délègue la logique à functions.register_entity"""
+    """Delegue la logique a functions.register_entity."""
     return await functions.register_entity(entity)
 
 
-@auth_api.get("/me", summary="Récupérer le profil depuis le token")
+@auth_api.get("/me", summary="Recuperer le profil depuis le token")
 async def get_me(token: str = Depends(oauth2_scheme)):
-    """Route légère : délègue la logique à functions.get_current_user"""
+    """Delegue la logique a functions.get_current_user."""
     return await functions.get_current_user(token)
+
+
+@auth_api.patch("/me", summary="Mettre a jour le profil authentifie")
+async def update_me(data: UpdateMeRequest, token: str = Depends(oauth2_scheme)):
+    """Permet a l'utilisateur de modifier son email ou son mot de passe."""
+    return await functions.update_current_user(token, data)
 
 
 @auth_api.get("/users", summary="Lister les utilisateurs agreges par role")
@@ -39,13 +51,13 @@ async def list_users():
     return await functions.list_users()
 
 
-@auth_api.post("/generate-email", summary="Génère un email + mot de passe dans collection du rôle")
+@auth_api.post("/generate-email", summary="Genere un email + mot de passe dans la collection du role")
 async def generate_email(req: EmailRequest):
-    """Route légère : délègue la logique à functions.generate_email_for_role"""
+    """Delegue la logique a functions.generate_email_for_role."""
     return await functions.generate_email_for_role(req)
 
 
-@auth_api.post("/recover-password", summary="Réinitialise le mot de passe et le retourne")
+@auth_api.post("/recover-password", summary="Reinitialise le mot de passe et le retourne")
 async def recover_password(req: PasswordRecoveryRequest):
-    """Route légère : délègue la logique à functions.recover_password_for_role"""
+    """Delegue la logique a functions.recover_password_for_role."""
     return await functions.recover_password_for_role(req)

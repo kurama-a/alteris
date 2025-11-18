@@ -49,6 +49,22 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+
+class UpdateMeRequest(BaseModel):
+    email: Optional[EmailStr] = None
+    current_password: Optional[str] = Field(
+        default=None, description="Mot de passe actuel pour confirmer les modifications"
+    )
+    new_password: Optional[str] = Field(
+        default=None,
+        description="Nouveau mot de passe",
+        min_length=8,
+    )
+    confirm_password: Optional[str] = Field(
+        default=None,
+        description="Confirmation du nouveau mot de passe",
+    )
+
 class Entity(BaseModel):
     raisonSociale: str = Field(..., example="Eseo")
     siret: str = Field(..., example="12345678900011")

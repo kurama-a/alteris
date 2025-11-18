@@ -73,6 +73,7 @@ export type Me = {
   roles: string[];
   roleLabel: string;
   role?: string;
+  anneeAcademique?: string;
   firstName?: string;
   lastName?: string;
   phone?: string;
@@ -97,6 +98,7 @@ type AuthContextValue = {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<LoginResult>;
   logout: () => void;
+  refreshMe: () => Promise<void>;
 };
 
 type StoredSession = {
@@ -170,6 +172,21 @@ export const PermissionsProvider = ({ children }: { children: React.ReactNode })
     writeStoredSession(token && me ? { token, me } : null);
   }, [token, me]);
 
+  const refreshMe = React.useCallback(async () => {
+    if (!token) {
+      setMe(null);
+      return;
+    }
+    try {
+      const payload = await fetchJson<MeResponse>(`${AUTH_API_URL}/me`, { token });
+      setMe(payload.me);
+    } catch (error) {
+      setMe(null);
+      setToken(null);
+      throw error;
+    }
+  }, [token]);
+
   React.useEffect(() => {
     if (!token) {
       setIsLoading(false);
@@ -232,8 +249,9 @@ export const PermissionsProvider = ({ children }: { children: React.ReactNode })
       isLoading,
       login,
       logout,
+      refreshMe,
     }),
-    [isLoading, login, logout, me, token]
+    [isLoading, login, logout, me, refreshMe, token]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

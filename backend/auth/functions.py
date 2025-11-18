@@ -11,7 +11,15 @@ from typing import Any, Dict, List, Optional
 from bson import ObjectId
 
 from common import db as database
-from auth.models import UserRole, User, LoginRequest, EmailRequest, PasswordRecoveryRequest, Entity
+from auth.models import (
+    UserRole,
+    User,
+    LoginRequest,
+    EmailRequest,
+    PasswordRecoveryRequest,
+    Entity,
+    UpdateMeRequest,
+)
 from auth.role_definitions import ROLE_DEFINITIONS, get_role_definition
 from apprenti.functions import _build_journal_payload
 
@@ -141,6 +149,10 @@ def build_me_from_document(user: Dict[str, Any], role: str) -> Dict[str, Any]:
     if isinstance(stored_role_label, str) and stored_role_label.strip():
         me["roleLabel"] = stored_role_label.strip()
 
+    annee_academique = user.get("annee_academique") or user.get("anneeAcademique")
+    if isinstance(annee_academique, str) and annee_academique.strip():
+        me["anneeAcademique"] = annee_academique.strip()
+
     stored_perms = user.get("perms")
     if isinstance(stored_perms, list) and stored_perms:
         merged_perms = set(me["perms"])
@@ -198,6 +210,12 @@ def get_collection_from_role(role: str):
     if database.db is None:
         raise HTTPException(status_code=500, detail="DB non initialisée")
     return database.db[get_collection_name_by_role(role)]
+
+
+def _all_known_roles() -> List[str]:
+    roles = {role.value for role in UserRole}
+    roles.update(ROLE_DEFINITIONS.keys())
+    return list(roles)
 
 
 async def fetch_supervised_apprentices(role: str, supervisor_id: ObjectId | str | None) -> List[Dict[str, Any]]:
@@ -381,6 +399,77 @@ async def list_users() -> Dict[str, Any]:
             users.append(build_me_from_document(user, role))
 
     return {"users": users}
+
+
+async def _ensure_email_available(email: str, exclude_user_id: ObjectId | None = None):
+    """Verifie qu'aucun autre utilisateur n'utilise deja cet email."""
+    if database.db is None:
+        raise HTTPException(status_code=500, detail="DB non initialisee")
+    normalized_email = email.strip().lower()
+    for role in _all_known_roles():
+        collection = get_collection_from_role(role)
+        existing = await collection.find_one({"email": normalized_email})
+        if existing and (exclude_user_id is None or existing["_id"] != exclude_user_id):
+            raise HTTPException(status_code=409, detail="Cet email est deja utilise par un autre utilisateur")
+
+
+async def update_current_user(token: str, payload: UpdateMeRequest) -> Dict[str, Any]:
+    payload_data = payload.dict(exclude_unset=True)
+    desired_email = payload_data.get("email", None)
+    desired_password = payload_data.get("new_password", None)
+    confirm_password = payload_data.get("confirm_password", None)
+    current_password = payload_data.get("current_password", None)
+
+    if not desired_email and not desired_password:
+        raise HTTPException(status_code=400, detail="Aucune modification demandee")
+
+    payload_token = decode_access_token(token)
+    if not payload_token:
+        raise HTTPException(status_code=401, detail="Token invalide ou expire")
+
+    role = payload_token.get("role")
+    email = payload_token.get("sub")
+    if not role or not email:
+        raise HTTPException(status_code=401, detail="Token incomplet")
+
+    collection = get_collection_from_role(role)
+    user = await collection.find_one({"email": email})
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+
+    hashed_password = user.get("password") or user.get("hashed_password")
+    if (desired_password or (desired_email and desired_email.strip().lower() != email)) and not current_password:
+        raise HTTPException(status_code=400, detail="Merci d'indiquer votre mot de passe actuel pour confirmer la modification")
+
+    if current_password and not hashed_password:
+        raise HTTPException(status_code=500, detail="Mot de passe actuel introuvable")
+
+    if current_password and hashed_password and not verify_password(current_password, hashed_password):
+        raise HTTPException(status_code=401, detail="Mot de passe actuel incorrect")
+
+    updates: Dict[str, Any] = {}
+    if desired_email:
+        normalized_email = desired_email.strip().lower()
+        if normalized_email != user.get("email"):
+            await _ensure_email_available(normalized_email, user["_id"])
+            updates["email"] = normalized_email
+
+    if desired_password:
+        if desired_password != confirm_password:
+            raise HTTPException(status_code=400, detail="La confirmation du mot de passe ne correspond pas")
+        updates["password"] = hash_password(desired_password)
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="Aucune modification a appliquer")
+
+    updates["updated_at"] = datetime.utcnow()
+    await collection.update_one({"_id": user["_id"]}, {"$set": updates})
+
+    updated_user = await collection.find_one({"_id": user["_id"]})
+    me = build_me_from_document(updated_user, role)
+    await enrich_me_with_apprentices(me, role, updated_user)
+
+    return {"message": "Profil mis a jour avec succes", "me": me}
 
 
 # ------------------------

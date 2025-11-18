@@ -3,6 +3,8 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth, useMe, useCan } from "../auth/Permissions";
 import "../styles/Layout.css";
 
+const PROFILE_BLOCKED_ROLES = new Set(["admin", "coordinatrice", "responsable_cursus"]);
+
 export default function Layout() {
   const { logout } = useAuth();
   const me = useMe();
@@ -21,6 +23,15 @@ export default function Layout() {
   const canAdmin = useCan("user:manage");
   const location = useLocation();
   const navigate = useNavigate();
+  const normalizedRoles = React.useMemo(() => {
+    const values = new Set<string>();
+    if (me.role) values.add(me.role.toLowerCase());
+    (me.roles ?? []).forEach((role) => values.add(role.toLowerCase()));
+    return values;
+  }, [me.role, me.roles]);
+  const canSeeProfile = Array.from(normalizedRoles).every(
+    (role) => !PROFILE_BLOCKED_ROLES.has(role)
+  );
 
   const handleLogout = React.useCallback(() => {
     logout();
@@ -34,6 +45,7 @@ export default function Layout() {
     { to: "/juries", label: "Juries", visible: canJury },
     { to: "/promotions", label: "Promotions", visible: canPromotions },
     { to: "/admin", label: "Admin", visible: canAdmin },
+    { to: "/profil", label: "Profil", visible: canSeeProfile },
   ];
 
   return (
