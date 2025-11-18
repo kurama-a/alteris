@@ -1,10 +1,7 @@
-from fastapi import APIRouter, HTTPException
-from bson import ObjectId
-import common.db as database   # ← importer le module complet
-from models import HealthResponse, Entity
+from fastapi import APIRouter
 
 from entreprise.models import Entity, EntityUpdate, HealthResponse
-from .functions import (
+from functions import (
     creer_entreprise,
     lister_entreprises,
     mettre_a_jour_entreprise,
