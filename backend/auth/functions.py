@@ -384,6 +384,42 @@ async def list_users() -> Dict[str, Any]:
 
 
 # ------------------------
+# REGISTER ENTITY (ecole, entreprise_externe)
+# ------------------------
+async def register_entity(entity: Entity) -> Dict:
+    """Crée une entité dans la collection correspondant à son rôle (ecole, entreprise_externe)."""
+    role = entity.role.lower()
+    if role not in {"ecole", "entreprise_externe"}:
+        raise HTTPException(status_code=400, detail="Rôle d'entité invalide (attendu: ecole ou entreprise_externe)")
+
+    collection = get_collection_from_role(role)
+
+    # Conflit par siret ou email
+    existing = await collection.find_one({"$or": [{"siret": entity.siret}, {"email": entity.email}]})
+    if existing:
+        raise HTTPException(status_code=409, detail="Entité déjà existante (même siret ou email)")
+
+    doc = {
+        "raisonSociale": entity.raisonSociale,
+        "siret": entity.siret,
+        "adresse": entity.adresse,
+        "email": entity.email,
+        "role": role,
+        "creeLe": getattr(entity, "creeLe", None),
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+    }
+
+    result = await collection.insert_one(doc)
+
+    return {
+        "message": "✅ Entité enregistrée avec succès",
+        "entity_id": str(result.inserted_id),
+        "role": role,
+    }
+
+
+# ------------------------
 # GENERATE EMAIL
 # ------------------------
 async def generate_email_for_role(req: EmailRequest) -> Dict:

@@ -4,10 +4,10 @@ if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 from common.app_factory import create_app
-from entreprise.routes import entreprise_api
+from routes import entreprise_api
 
 app = create_app(
     service_name="Entreprise_Externe",
     api=entreprise_api,
-    prefix="/entreprise"
+    prefix="/entreprise_externe"
 )
