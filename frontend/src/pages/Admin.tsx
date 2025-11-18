@@ -31,6 +31,20 @@ type EnterpriseListResponse = {
   }>;
 };
 
+type PromotionSummary = {
+  id: string;
+  anneeAcademique: string;
+  label: string;
+};
+
+type PromotionListResponse = {
+  promotions: Array<{
+    id?: string;
+    annee_academique?: string;
+    label?: string;
+  }>;
+};
+
 type RoleOption = {
   value: string;
   label: string;
@@ -241,6 +255,9 @@ export default function Admin() {
   const [enterpriseSuccess, setEnterpriseSuccess] = React.useState<string | null>(null);
   const [enterpriseForm, setEnterpriseForm] = React.useState<EnterpriseFormState>(emptyEnterpriseForm);
   const [isSavingEnterprise, setIsSavingEnterprise] = React.useState(false);
+  const [promotions, setPromotions] = React.useState<PromotionSummary[]>([]);
+  const [isLoadingPromotions, setIsLoadingPromotions] = React.useState(false);
+  const [promotionError, setPromotionError] = React.useState<string | null>(null);
   const [editTutorId, setEditTutorId] = React.useState("");
   const [editMasterId, setEditMasterId] = React.useState("");
   const [editEnterpriseId, setEditEnterpriseId] = React.useState("");
@@ -320,6 +337,46 @@ export default function Admin() {
     }
   }, [token, mapUserToEditable]);
 
+  const loadPromotions = React.useCallback(async () => {
+    if (!token) {
+      setPromotions([]);
+      setPromotionError(null);
+      return;
+    }
+    setIsLoadingPromotions(true);
+    setPromotionError(null);
+    try {
+      const payload = await fetchJson<PromotionListResponse>(`${ADMIN_API_URL}/promos`, { token });
+      const mapped =
+        payload.promotions
+          ?.map((promotion) => {
+            const id = promotion.id ?? promotion.annee_academique ?? "";
+            const annee = promotion.annee_academique ?? "";
+            const label = promotion.label ?? annee;
+            if (!id || !annee) {
+              return null;
+            }
+            return {
+              id,
+              anneeAcademique: annee,
+              label: label || annee,
+            };
+          })
+          .filter((promotion): promotion is PromotionSummary => Boolean(promotion)) ?? [];
+      setPromotions(mapped);
+      if (mapped.length === 0) {
+        setPromotionError("Aucune promotion existante. Merci d'en créer une depuis l'onglet Promotions.");
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Impossible de charger les promotions.";
+      setPromotionError(message);
+      setPromotions([]);
+    } finally {
+      setIsLoadingPromotions(false);
+    }
+  }, [token]);
+
   React.useEffect(() => {
     refreshUsers();
   }, [refreshUsers]);
@@ -327,6 +384,10 @@ export default function Admin() {
   React.useEffect(() => {
     loadEnterprises();
   }, [loadEnterprises]);
+
+  React.useEffect(() => {
+    loadPromotions();
+  }, [loadPromotions]);
 
   React.useEffect(() => {
     setCreateDraft((current) => {
@@ -1099,16 +1160,6 @@ export default function Admin() {
               />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span>Année académique</span>
-              <input
-                type="text"
-                value={createDraft.anneeAcademique}
-                onChange={(event) => handleCreateChange("anneeAcademique", event.target.value)}
-                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
-                required
-              />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <span>Mot de passe</span>
               <input
                 type="password"
@@ -1134,6 +1185,28 @@ export default function Admin() {
             </label>
             {createDraft.role === "apprenti" && (
               <>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span>Promotion (année académique)</span>
+                  <select
+                    value={createDraft.anneeAcademique}
+                    onChange={(event) => handleCreateChange("anneeAcademique", event.target.value)}
+                    style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                    disabled={isLoadingPromotions || promotions.length === 0}
+                    required
+                  >
+                    <option value="">
+                      {isLoadingPromotions ? "Chargement des promotions..." : "Sélectionnez une promotion"}
+                    </option>
+                    {promotions.map((promotion) => (
+                      <option key={promotion.id} value={promotion.anneeAcademique}>
+                        {promotion.label} ({promotion.anneeAcademique})
+                      </option>
+                    ))}
+                  </select>
+                  {promotionError && (
+                    <small style={{ color: "#b45309" }}>{promotionError}</small>
+                  )}
+                </label>
                 <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <span>Tuteur pédagogique</span>
                   <select

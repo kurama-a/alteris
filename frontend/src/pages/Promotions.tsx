@@ -16,6 +16,21 @@ type ResponsableInfo = {
   email?: string;
 };
 
+type PromoMember = {
+  _id: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
+};
+
+type RawPromoMember = PromoMember & {
+  id?: string;
+  apprenti_id?: string;
+  firstName?: string;
+  lastName?: string;
+};
+
 type PromotionRecord = {
   id: string;
   annee_academique: string;
@@ -24,6 +39,7 @@ type PromotionRecord = {
   coordinators?: string[];
   next_milestone?: string | null;
   responsable_cursus?: ResponsableInfo | null;
+  apprentis?: RawPromoMember[];
 };
 
 type PromotionListResponse = {
@@ -38,14 +54,6 @@ type Alert = {
   id: string;
   message: string;
   level: "info" | "warning";
-};
-
-type PromoMember = {
-  _id: string;
-  first_name?: string;
-  last_name?: string;
-  email?: string;
-  phone?: string;
 };
 
 type FormValues = {
@@ -250,24 +258,38 @@ export default function Promotions() {
     }
   };
 
-  const handleShowMembers = async (promotion: PromotionRecord) => {
-    if (!token) return;
-    setMembersModal({ promo: promotion, members: [], isLoading: true, error: null });
-    try {
-      const payload = await fetchJson<{ data?: { apprentis?: PromoMember[] } }>(
-        `${ADMIN_API_URL}/promos/generate/annee/${promotion.annee_academique}`,
-        { token }
-      );
-      const members = payload.data?.apprentis ?? [];
-      setMembersModal({ promo: promotion, members, isLoading: false });
-      await loadPromotions();
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Impossible de récupérer les apprentis de cette promotion.";
-      setMembersModal({ promo: promotion, members: [], isLoading: false, error: message });
+  const normalizeMembers = React.useCallback((members?: RawPromoMember[]): PromoMember[] => {
+    if (!Array.isArray(members)) {
+      return [];
     }
+    return (
+      members
+        .map((member) => {
+          const identifier = member._id ?? member.id ?? member.apprenti_id;
+          if (!identifier) {
+            return null;
+          }
+          return {
+            _id: String(identifier),
+            first_name: member.first_name ?? member.firstName,
+            last_name: member.last_name ?? member.lastName,
+            email: member.email,
+            phone: member.phone,
+          };
+        })
+        .filter((entry): entry is PromoMember => Boolean(entry)) ?? []
+    );
+  }, []);
+
+  const handleShowMembers = (promotion: PromotionRecord) => {
+    if (!token) return;
+    const members = normalizeMembers(promotion.apprentis);
+    setMembersModal({
+      promo: promotion,
+      members,
+      isLoading: false,
+      error: null,
+    });
   };
 
   const closeMembersModal = () => {
@@ -494,21 +516,23 @@ export default function Promotions() {
             ) : membersModal.members.length === 0 ? (
               <p>Aucun apprenti trouvé pour cette promotion.</p>
             ) : (
-              <ul className="members-list">
-                {membersModal.members.map((member) => {
-                  const fullName =
-                    `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() ||
-                    member.email ||
-                    member._id;
-                  return (
-                    <li key={member._id}>
-                      <strong>{fullName}</strong>
-                      <span>{member.email}</span>
-                      {member.phone && <span>{member.phone}</span>}
-                    </li>
-                  );
-                })}
-              </ul>
+              <div className="members-list-container">
+                <ul className="members-list">
+                  {membersModal.members.map((member) => {
+                    const fullName =
+                      `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim() ||
+                      member.email ||
+                      member._id;
+                    return (
+                      <li key={member._id}>
+                        <strong>{fullName}</strong>
+                        <span>{member.email}</span>
+                        {member.phone && <span>{member.phone}</span>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             )}
           </div>
         </div>
