@@ -462,7 +462,7 @@ export default function Admin() {
           body: JSON.stringify(body),
         });
         setEnterpriseSuccess(
-          isEditingEnterprise ? "Entreprise mise � jour." : "Entreprise ajout�e."
+          isEditingEnterprise ? "Entreprise mise à jour." : "Entreprise ajoutée."
         );
         setEnterpriseForm(emptyEnterpriseForm);
         await loadEnterprises();

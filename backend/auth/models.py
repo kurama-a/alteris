@@ -18,6 +18,7 @@ class User(BaseModel):
     last_name: str = Field(..., example="Diop")
     email: EmailStr = Field(..., example="fatou@example.com")
     phone: str = Field(..., example="+22912345678")
+    age: int = Field(..., example="22")
     annee_academique: str = Field(..., example="E5a")    
     password: str = Field(..., example="securePassword123")
     role: UserRole = Field(..., description="Rôle à choisir dans la liste")

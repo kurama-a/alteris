@@ -434,7 +434,6 @@ export default function Journal() {
 
           <div className="company">
             <div className="company-name">{company.name}</div>
-            <div className="company-dates">{company.dates}</div>
             <div className="company-addr">{company.address}</div>
           </div>
         </div>

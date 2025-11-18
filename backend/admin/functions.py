@@ -46,6 +46,7 @@ def _serialize_promotion_document(document: dict) -> dict:
         "id": str(document.get("_id", "")),
         "annee_academique": document.get("annee_academique"),
         "label": document.get("label"),
+        "apprentis": document.get("apprentis"),
         "nb_apprentis": document.get("nb_apprentis", 0),
         "coordinators": document.get("coordinators", []),
         "next_milestone": document.get("next_milestone"),
@@ -70,6 +71,7 @@ async def get_apprentis_by_annee_academique(annee_academique: str):
 
     promo_base_fields = {
         "annee_academique": annee_academique,
+        "apprentis": apprentis_meme_promo,
         "nb_apprentis": len(apprentis_meme_promo),
         "apprentis": [{
             "_id": str(apprenti["_id"]),

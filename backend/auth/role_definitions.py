@@ -55,7 +55,8 @@ ROLE_DEFINITIONS: Dict[str, RoleDefinition] = {
             "journal:read:all",
             "doc:read",
             "promotion:manage",
-            "meeting:schedule:team",
+            "meeting:participate",
+            "user:manage",
         ],
     },
     "entreprise": {
@@ -75,6 +76,8 @@ ROLE_DEFINITIONS: Dict[str, RoleDefinition] = {
             "journal:read:all",
             "doc:read",
             "jury:read",
+            "user:manage",
+            "meeting:participate",
         ],
     },
     "jury": {

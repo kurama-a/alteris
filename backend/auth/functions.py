@@ -242,6 +242,7 @@ async def register_user(user: User) -> Dict:
         "last_name": user.last_name,
         "email": user.email,
         "phone": user.phone,
+        "age": user.age,
         "annee_academique": user.annee_academique,
         "password": hashed_password,
         "role": role,
@@ -256,8 +257,6 @@ async def register_user(user: User) -> Dict:
         "user_id": str(result.inserted_id),
         "role": role
     }
-
-
 
 # ------------------------
 # REGISTER ENTITY
