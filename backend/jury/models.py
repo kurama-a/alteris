@@ -16,7 +16,7 @@ class JuryStatus(str, Enum):
 
 class MemberDetails(BaseModel):
     user_id: str = Field(..., description="Identifiant unique de l'utilisateur")
-    role: str = Field(..., description="R�le de l'utilisateur dans la plateforme")
+    role: str = Field(..., description="Rôle de l'utilisateur dans la plateforme")
     first_name: Optional[str] = Field(None, example="Jeanne")
     last_name: Optional[str] = Field(None, example="Martin")
     email: Optional[EmailStr] = Field(None, example="jeanne.martin@example.com")
@@ -31,23 +31,23 @@ class JuryMembers(BaseModel):
 
 
 class JuryBase(BaseModel):
-    semestre_reference: str = Field(..., description="Semestre concern� (E5a, S9...)")
+    semestre_reference: str = Field(..., description="Semestre concerné (E5a, S9...)")
     date: datetime = Field(..., description="Date et heure du passage du jury")
     status: JuryStatus = Field(default=JuryStatus.planifie, description="Statut du jury")
 
 
 class JuryCreateRequest(JuryBase):
-    tuteur_id: str = Field(..., description="ID du tuteur p�dagogique")
-    professeur_id: str = Field(..., description="ID du professeur (r�f�rent)")
-    apprenti_id: str = Field(..., description="ID de l'apprenti pr�sent�")
-    intervenant_id: str = Field(..., description="ID de l'intervenant invit�")
+    tuteur_id: str = Field(..., description="ID du tuteur pédagogique")
+    professeur_id: str = Field(..., description="ID du professeur (référent)")
+    apprenti_id: str = Field(..., description="ID de l'apprenti présenté")
+    intervenant_id: str = Field(..., description="ID de l'intervenant invité")
 
 
 class JuryUpdateRequest(BaseModel):
-    semestre_reference: Optional[str] = Field(None, description="Semestre concern� (E5a, S9...)")
+    semestre_reference: Optional[str] = Field(None, description="Semestre concerné (E5a, S9...)")
     date: Optional[datetime] = Field(None, description="Date et heure du passage du jury")
     status: Optional[JuryStatus] = Field(None, description="Statut du jury")
-    tuteur_id: Optional[str] = Field(None, description="Nouveau tuteur p�dagogique")
+    tuteur_id: Optional[str] = Field(None, description="Nouveau tuteur pédagogique")
     professeur_id: Optional[str] = Field(None, description="Nouveau professeur")
     apprenti_id: Optional[str] = Field(None, description="Nouvel apprenti")
     intervenant_id: Optional[str] = Field(None, description="Nouvel intervenant")
