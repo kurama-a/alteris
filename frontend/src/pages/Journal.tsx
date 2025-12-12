@@ -25,6 +25,8 @@ type AdminApprentisResponse = {
   apprentis: JournalSelectableApprentice[];
 };
 
+const GLOBAL_JOURNAL_ROLES = new Set(["admin", "administrateur", "coordinatrice", "responsable_cursus"]);
+
 export default function Journal() {
   const me = useMe();
   const { token } = useAuth();
@@ -32,12 +34,26 @@ export default function Journal() {
   const [remoteJournals, setRemoteJournals] = React.useState<Record<string, ApprenticeJournal>>({});
   const [loadingJournalId, setLoadingJournalId] = React.useState<string | null>(null);
   const [journalError, setJournalError] = React.useState<string | null>(null);
-  const [adminApprentices, setAdminApprentices] = React.useState<JournalSelectableApprentice[]>([]);
-  const [isLoadingAdminApprentices, setIsLoadingAdminApprentices] = React.useState(false);
+  const [globalApprentices, setGlobalApprentices] = React.useState<JournalSelectableApprentice[]>([]);
+  const [isLoadingGlobalApprentices, setIsLoadingGlobalApprentices] = React.useState(false);
   const [apprenticeListError, setApprenticeListError] = React.useState<string | null>(null);
-  const isAdmin = React.useMemo(
-    () => me.role === "admin" || (Array.isArray(me.roles) && me.roles.includes("admin")),
-    [me.role, me.roles]
+  const normalizedRoles = React.useMemo(() => {
+    const values = new Set<string>();
+    if (typeof me.role === "string" && me.role.trim()) {
+      values.add(me.role.trim());
+    }
+    if (Array.isArray(me.roles)) {
+      me.roles.forEach((role) => {
+        if (typeof role === "string" && role.trim()) {
+          values.add(role.trim());
+        }
+      });
+    }
+    return Array.from(values);
+  }, [me.role, me.roles]);
+  const canBrowseAllJournals = React.useMemo(
+    () => normalizedRoles.some((role) => GLOBAL_JOURNAL_ROLES.has(role)),
+    [normalizedRoles]
   );
   const ownJournal = React.useMemo<ApprenticeJournal | null>(() => {
     if (me.profile && me.company && me.school) {
@@ -69,14 +85,14 @@ export default function Journal() {
   }, [me.apprentices, ownJournal]);
 
   React.useEffect(() => {
-    if (!isAdmin || !token) {
-      setAdminApprentices([]);
+    if (!canBrowseAllJournals || !token) {
+      setGlobalApprentices([]);
       setApprenticeListError(null);
-      setIsLoadingAdminApprentices(false);
+      setIsLoadingGlobalApprentices(false);
       return;
     }
     let cancelled = false;
-    setIsLoadingAdminApprentices(true);
+    setIsLoadingGlobalApprentices(true);
     setApprenticeListError(null);
     fetchJson<AdminApprentisResponse>(`${ADMIN_API_URL}/apprentis`, { token })
       .then((payload) => {
@@ -89,11 +105,11 @@ export default function Journal() {
               email: user.email,
             }))
             .filter((user): user is JournalSelectableApprentice => Boolean(user.id)) ?? [];
-        setAdminApprentices(apprentices);
+        setGlobalApprentices(apprentices);
       })
       .catch((error) => {
         if (cancelled) return;
-        setAdminApprentices([]);
+        setGlobalApprentices([]);
         setApprenticeListError(
           error instanceof Error
             ? error.message
@@ -102,13 +118,13 @@ export default function Journal() {
       })
       .finally(() => {
         if (!cancelled) {
-          setIsLoadingAdminApprentices(false);
+          setIsLoadingGlobalApprentices(false);
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [isAdmin, token]);
+  }, [canBrowseAllJournals, token]);
 
   const accessibleSummaries = React.useMemo<JournalSelectableApprentice[]>(() => {
     return accessibleJournals.map((apprentice) => ({
@@ -123,7 +139,7 @@ export default function Journal() {
     accessibleSummaries.forEach((apprentice) => {
       map.set(apprentice.id, apprentice);
     });
-    adminApprentices.forEach((apprentice) => {
+    globalApprentices.forEach((apprentice) => {
       if (apprentice.id) {
         map.set(apprentice.id, apprentice);
       }
@@ -131,13 +147,13 @@ export default function Journal() {
     return Array.from(map.values()).sort((a, b) =>
       a.fullName.localeCompare(b.fullName, "fr", { sensitivity: "base" })
     );
-  }, [accessibleSummaries, adminApprentices]);
+  }, [accessibleSummaries, globalApprentices]);
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (selectableApprentices.length === 0) {
-      if (!selectedId && !isAdmin) {
+      if (!selectedId && !canBrowseAllJournals) {
         if (ownJournal) {
           setSelectedId(ownJournal.id);
         } else if (me.id) {
@@ -152,14 +168,14 @@ export default function Journal() {
         return;
       }
     }
-    if (isAdmin) {
+    if (canBrowseAllJournals) {
       if (selectedId !== null) {
         setSelectedId(null);
       }
     } else {
       setSelectedId(selectableApprentices[0].id);
     }
-  }, [selectableApprentices, selectedId, ownJournal, me.id, isAdmin]);
+  }, [selectableApprentices, selectedId, ownJournal, me.id, canBrowseAllJournals]);
 
   const remoteJournalForSelection = selectedId ? remoteJournals[selectedId] : null;
 
@@ -309,42 +325,67 @@ export default function Journal() {
     "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=2400&q=80";
 
   const canSelectApprentices =
-    selectableApprentices.length > 1 || (isAdmin && selectableApprentices.length > 0);
+    selectableApprentices.length > 1 || (canBrowseAllJournals && selectableApprentices.length > 0);
+
+  const selectionTitle = canBrowseAllJournals
+    ? "Selectionnez le journal d'un apprenti"
+    : me.apprentices && me.apprentices.length > 1
+    ? "Selectionnez un apprenti a suivre"
+    : "Apprenti suivi";
+
+  const listForButtons = canBrowseAllJournals ? accessibleSummaries : selectableApprentices;
+  const showButtonList = listForButtons.length > 0;
 
   const selectorContent = canSelectApprentices ? (
     <section className="journal-selector">
-      <h2 className="journal-selector-title">
-        {isAdmin
-          ? "Selectionnez le journal d'un apprenti"
-          : me.apprentices && me.apprentices.length > 1
-          ? "Selectionnez un apprenti a suivre"
-          : "Apprenti suivi"}
-      </h2>
-      <div className="journal-selector-list">
-        {selectableApprentices.map((apprentice) => {
-          const isActive = apprentice.id === activeId;
-          return (
-            <button
-              key={apprentice.id}
-              type="button"
-              className={`journal-selector-item${isActive ? " is-active" : ""}`}
-              onClick={() => setSelectedId(apprentice.id)}
-            >
-              <span className="journal-selector-name">{apprentice.fullName}</span>
-              <span className="journal-selector-email">{apprentice.email}</span>
-              <span className="journal-selector-id">{apprentice.id}</span>
-            </button>
-          );
-        })}
-      </div>
-      {isAdmin ? (
-        <div className="journal-selector-note">
-          {isLoadingAdminApprentices
-            ? "Chargement de la liste complete des apprentis..."
-            : apprenticeListError
-            ? apprenticeListError
-            : `Total : ${selectableApprentices.length} apprentis`}
+      <h2 className="journal-selector-title">{selectionTitle}</h2>
+      {canBrowseAllJournals ? (
+        <label className="journal-selector-dropdown">
+          <span>Rechercher un apprenti</span>
+          <select
+            value={selectedId ?? ""}
+            onChange={(event) => setSelectedId(event.target.value || null)}
+          >
+            <option value="">
+              {selectedId ? "Choisissez un autre apprenti" : "Choisissez un apprenti"}
+            </option>
+            {selectableApprentices.map((apprentice) => (
+              <option key={apprentice.id} value={apprentice.id}>
+                {apprentice.fullName} - {apprentice.email}
+              </option>
+            ))}
+          </select>
+          <small className="journal-selector-helper">
+            {isLoadingGlobalApprentices
+              ? "Chargement de la liste complete des apprentis..."
+              : apprenticeListError
+              ? apprenticeListError
+              : `Total : ${selectableApprentices.length} apprentis`}
+          </small>
+        </label>
+      ) : null}
+      {showButtonList ? (
+        <div className="journal-selector-list">
+          {listForButtons.map((apprentice) => {
+            const isActive = apprentice.id === activeId;
+            return (
+              <button
+                key={apprentice.id}
+                type="button"
+                className={`journal-selector-item${isActive ? " is-active" : ""}`}
+                onClick={() => setSelectedId(apprentice.id)}
+              >
+                <span className="journal-selector-name">{apprentice.fullName}</span>
+                <span className="journal-selector-email">{apprentice.email}</span>
+                <span className="journal-selector-id">{apprentice.id}</span>
+              </button>
+            );
+          })}
         </div>
+      ) : canBrowseAllJournals ? (
+        <p className="journal-selector-note">
+          Aucun apprenti ne vous est directement rattache. Utilisez la liste deroulante pour consulter un journal.
+        </p>
       ) : null}
     </section>
   ) : null;
@@ -362,7 +403,7 @@ export default function Journal() {
       );
     }
 
-    if (isAdmin) {
+    if (canBrowseAllJournals) {
       return (
         <div className="page">
           {selectorContent}

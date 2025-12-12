@@ -223,6 +223,25 @@ body{
   color:var(--text-strong);
   margin-bottom:12px;
 }
+.journal-selector-dropdown{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin-bottom:14px;
+}
+.journal-selector-dropdown select{
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:10px 12px;
+  font-size:14px;
+  background:var(--white);
+  color:var(--text-strong);
+}
+.journal-selector-helper{
+  font-size:12px;
+  color:var(--text);
+  margin-top:4px;
+}
 .journal-selector-note{
   margin-top:12px;
   font-size:0.9rem;
