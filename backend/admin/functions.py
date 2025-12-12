@@ -1,8 +1,10 @@
 from fastapi import HTTPException
 from datetime import datetime
+from uuid import uuid4
+from typing import List, Optional
 import common.db as database
 from bson import ObjectId
-from models import UserUpdateModel, PromotionUpsertRequest
+from models import UserUpdateModel, PromotionUpsertRequest, PromotionSemesterPayload
 
 ROLES_VALIDES = [
     "apprenti",
@@ -44,6 +46,66 @@ ROLE_REFERENCES = {
 }
 
 
+def _serialize_semesters(raw_semesters):
+    serialized = []
+    if not raw_semesters:
+        return serialized
+    for raw in sorted(raw_semesters, key=lambda entry: entry.get("order", 0)):
+        name = raw.get("name")
+        if not name:
+            continue
+        deliverables = []
+        for deliverable in sorted(raw.get("deliverables", []), key=lambda entry: entry.get("order", 0)):
+            deliverables.append({
+                "deliverable_id": deliverable.get("deliverable_id") or deliverable.get("id"),
+                "title": deliverable.get("title"),
+                "description": deliverable.get("description"),
+                "due_date": deliverable.get("due_date"),
+                "order": deliverable.get("order", 0),
+            })
+        serialized.append({
+            "semester_id": raw.get("semester_id") or raw.get("id"),
+            "name": name,
+            "start_date": raw.get("start_date"),
+            "end_date": raw.get("end_date"),
+            "order": raw.get("order", 0),
+            "deliverables": deliverables,
+        })
+    return serialized
+
+
+def _build_semesters_update(semesters: Optional[List[PromotionSemesterPayload]]):
+    if semesters is None:
+        return None
+
+    normalized: List[dict] = []
+    for index, semester in enumerate(semesters):
+        name = semester.name.strip()
+        if not name:
+            continue
+        normalized_semester = {
+            "semester_id": semester.semester_id or str(uuid4()),
+            "name": name,
+            "start_date": semester.start_date,
+            "end_date": semester.end_date,
+            "order": semester.order if semester.order is not None else index,
+            "deliverables": [],
+        }
+        for deliverable_index, deliverable in enumerate(semester.deliverables):
+            title = deliverable.title.strip()
+            if not title:
+                continue
+            normalized_semester["deliverables"].append({
+                "deliverable_id": deliverable.deliverable_id or str(uuid4()),
+                "title": title,
+                "due_date": deliverable.due_date,
+                "description": deliverable.description,
+                "order": deliverable.order if deliverable.order is not None else deliverable_index,
+            })
+        normalized.append(normalized_semester)
+    return normalized
+
+
 def _serialize_promotion_document(document: dict) -> dict:
     return {
         "id": str(document.get("_id", "")),
@@ -54,6 +116,7 @@ def _serialize_promotion_document(document: dict) -> dict:
         "coordinators": document.get("coordinators", []),
         "next_milestone": document.get("next_milestone"),
         "responsable_cursus": document.get("responsable_cursus"),
+        "semesters": _serialize_semesters(document.get("semesters", [])),
         "updated_at": document.get("updated_at"),
         "created_at": document.get("created_at"),
     }
@@ -289,6 +352,10 @@ async def create_or_update_promotion(payload: PromotionUpsertRequest):
         "updated_at": datetime.utcnow(),
     }
 
+    semesters_payload = _build_semesters_update(payload.semesters)
+    if semesters_payload is not None:
+        updates["semesters"] = semesters_payload
+
     if payload.responsable_id:
         responsable_collection = database.db["users_responsable_cursus"]
         try:
@@ -314,6 +381,31 @@ async def create_or_update_promotion(payload: PromotionUpsertRequest):
     promo = await collection_promo.find_one({"annee_academique": payload.annee_academique})
     if not promo:
         raise HTTPException(status_code=500, detail="Impossible de mettre à jour la promotion")
+    return _serialize_promotion_document(promo)
+
+
+async def update_promotion_timeline(annee_academique: str, semesters: List[PromotionSemesterPayload]):
+    if database.db is None:
+        raise HTTPException(status_code=500, detail="Connexion DB absente")
+
+    collection_promo = database.db["promos"]
+    normalized_semesters = _build_semesters_update(semesters) or []
+    result = await collection_promo.update_one(
+        {"annee_academique": annee_academique},
+        {
+            "$set": {
+                "semesters": normalized_semesters,
+                "updated_at": datetime.utcnow(),
+            }
+        },
+        upsert=False,
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Promotion introuvable")
+
+    promo = await collection_promo.find_one({"annee_academique": annee_academique})
+    if not promo:
+        raise HTTPException(status_code=500, detail="Impossible de charger la promotion mise a jour")
     return _serialize_promotion_document(promo)
 
 

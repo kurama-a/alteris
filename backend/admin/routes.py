@@ -10,11 +10,12 @@ from models import (
     AssocierResponsablePromoRequest,
     AssocierMaitreRequest,
     PromotionUpsertRequest,
+    PromotionTimelineRequest,
     #AssocierEcoleRequest,
     AssocierEntrepriseRequest,
     AssocierJuryRequest,
 )
-from functions import get_apprentis_by_annee_academique ,supprimer_utilisateur_par_role_et_id,modifier_utilisateur_par_role_et_id,list_promotions,create_or_update_promotion,list_responsables_cursus,list_all_apprentis
+from functions import get_apprentis_by_annee_academique ,supprimer_utilisateur_par_role_et_id,modifier_utilisateur_par_role_et_id,list_promotions,create_or_update_promotion,update_promotion_timeline,list_responsables_cursus,list_all_apprentis
 def get_collection_name_by_role(role: str) -> str:
     return f"users_{role.lower().replace(' ', '_')}"
 
@@ -91,6 +92,16 @@ async def upsert_promo(data: PromotionUpsertRequest):
     promotion = await create_or_update_promotion(data)
     return {
         "message": "Promotion mise a jour avec succes",
+        "promotion": promotion,
+    }
+
+
+
+@admin_api.post("/promos/{annee_academique}/timeline", summary="Mettre a jour la temporalite d'une promotion")
+async def upsert_promo_timeline(annee_academique: str, data: PromotionTimelineRequest):
+    promotion = await update_promotion_timeline(annee_academique, data.semesters)
+    return {
+        "message": "Temporalite mise a jour avec succes",
         "promotion": promotion,
     }
 
