@@ -332,3 +332,11 @@ async def update_jury(jury_id: str, payload: JuryUpdateRequest):
     await _jury_collection().update_one({"_id": current_document["_id"]}, {"$set": updates})
     current_document.update(updates)
     return _serialize_jury(current_document)
+
+
+@jury_api.delete("/juries/{jury_id}", summary="Supprimer un jury")
+async def delete_jury(jury_id: str):
+    result = await _jury_collection().delete_one({"_id": _parse_object_id(jury_id)})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Jury introuvable")
+    return {"status": "deleted"}

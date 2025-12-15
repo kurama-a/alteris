@@ -119,6 +119,29 @@ const initialFormState: JuryFormState = {
   intervenantId: "",
 };
 
+function toDateTimeLocalInput(value?: string | Date): string {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function buildFormStateFromJury(jury: JuryRecord): JuryFormState {
+  const promotionRef = jury.promotion_reference;
+  return {
+    promotionId: promotionRef?.promotion_id ?? "",
+    semesterId: promotionRef?.semester_id ?? "",
+    deliverableId: promotionRef?.deliverable_id ?? "",
+    date: toDateTimeLocalInput(jury.date),
+    status: jury.status,
+    tuteurId: jury.members.tuteur.user_id,
+    professeurId: jury.members.professeur.user_id,
+    apprentiId: jury.members.apprenti.user_id,
+    intervenantId: jury.members.intervenant.user_id,
+  };
+}
+
 function formatMember(member: JuryMemberDetails): string {
   const fullName = `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim();
   return fullName || member.email || member.user_id;
@@ -145,6 +168,13 @@ export default function Juries() {
   const [isLoadingTimeline, setIsLoadingTimeline] = React.useState(false);
   const [timelineError, setTimelineError] = React.useState<string | null>(null);
   const [selectedApprenticeId, setSelectedApprenticeId] = React.useState("");
+  const [editingJuryId, setEditingJuryId] = React.useState<string | null>(null);
+  const [editFormDraft, setEditFormDraft] = React.useState<JuryFormState>(initialFormState);
+  const [isUpdatingJury, setIsUpdatingJury] = React.useState(false);
+  const [updateError, setUpdateError] = React.useState<string | null>(null);
+  const [statusUpdatingMap, setStatusUpdatingMap] = React.useState<Record<string, boolean>>({});
+  const [statusErrorMap, setStatusErrorMap] = React.useState<Record<string, string | null>>({});
+  const [deleteError, setDeleteError] = React.useState<string | null>(null);
 
   const normalizedRoles = React.useMemo(
     () => (me.roles ?? []).map((role) => role.toLowerCase()),
@@ -156,7 +186,8 @@ export default function Juries() {
       value.toLowerCase()
     );
     return haystacks.some(
-      (value) => value.includes("professeur") || value.includes("intervenant")
+      (value) =>
+        value.includes("professeur") || value.includes("intervenant") || value.includes("tuteur")
     );
   }, [me.roleLabel, normalizedRoles]);
 
@@ -165,6 +196,7 @@ export default function Juries() {
   const canManageJuries = React.useMemo(() => {
     if (normalizedRoles.some((role) => role.includes("admin"))) return true;
     if (normalizedRoles.some((role) => role.includes("coordinatrice"))) return true;
+    if (normalizedRoles.some((role) => role.includes("responsable"))) return true;
     return me.perms.includes("user:manage") || me.perms.includes("promotion:manage");
   }, [me.perms, normalizedRoles]);
 
@@ -264,6 +296,30 @@ export default function Juries() {
     [availableSemesters, formDraft.semesterId]
   );
   const availableDeliverables = selectedSemester?.deliverables ?? [];
+  const editSelectedPromotion = React.useMemo(
+    () => timelineOptions.find((option) => option.promotion_id === editFormDraft.promotionId),
+    [timelineOptions, editFormDraft.promotionId]
+  );
+  const editAvailableSemesters = editSelectedPromotion?.semesters ?? [];
+  const editSelectedSemester = React.useMemo(
+    () =>
+      editAvailableSemesters.find((semester) => semester.semester_id === editFormDraft.semesterId),
+    [editAvailableSemesters, editFormDraft.semesterId]
+  );
+  const editAvailableDeliverables = editSelectedSemester?.deliverables ?? [];
+
+  const canChangeStatusForJury = React.useCallback(
+    (jury: JuryRecord) => {
+      if (canManageJuries) return true;
+      const userId = me.id;
+      return (
+        jury.members.tuteur.user_id === userId ||
+        jury.members.professeur.user_id === userId ||
+        jury.members.intervenant.user_id === userId
+      );
+    },
+    [canManageJuries, me.id]
+  );
 
   const fetchJuries = React.useCallback(async () => {
     if (!token) {
@@ -372,6 +428,33 @@ export default function Juries() {
     setCreateSuccess(null);
   }, []);
 
+  const handleEditFormChange = React.useCallback((key: keyof JuryFormState, value: string) => {
+    setEditFormDraft((current) => {
+      if (key === "promotionId") {
+        return { ...current, promotionId: value, semesterId: "", deliverableId: "" };
+      }
+      if (key === "semesterId") {
+        return { ...current, semesterId: value, deliverableId: "" };
+      }
+      return { ...current, [key]: value };
+    });
+    setUpdateError(null);
+  }, []);
+  const openEditModal = React.useCallback(
+    (jury: JuryRecord) => {
+      setEditingJuryId(jury.id);
+      setEditFormDraft(buildFormStateFromJury(jury));
+      setUpdateError(null);
+    },
+    []
+  );
+
+  const closeEditModal = React.useCallback(() => {
+    setEditingJuryId(null);
+    setEditFormDraft(initialFormState);
+    setUpdateError(null);
+  }, []);
+
   const handleCreateJury = React.useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -422,6 +505,108 @@ export default function Juries() {
       }
     },
     [fetchJuries, formDraft, token]
+  );
+
+  const handleUpdateJury = React.useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!editingJuryId || !token) {
+        setUpdateError("Impossible de modifier ce jury pour le moment.");
+        return;
+      }
+      if (
+        !editFormDraft.promotionId ||
+        !editFormDraft.semesterId ||
+        !editFormDraft.date ||
+        !editFormDraft.tuteurId ||
+        !editFormDraft.professeurId ||
+        !editFormDraft.apprentiId ||
+        !editFormDraft.intervenantId
+      ) {
+        setUpdateError("Merci de renseigner tous les champs obligatoires.");
+        return;
+      }
+      setIsUpdatingJury(true);
+      setUpdateError(null);
+      try {
+        await fetchJson<JuryRecord>(`${JURY_API_URL}/juries/${editingJuryId}`, {
+          method: "PATCH",
+          token,
+          body: JSON.stringify({
+            promotion_id: editFormDraft.promotionId,
+            semester_id: editFormDraft.semesterId,
+            deliverable_id: editFormDraft.deliverableId || undefined,
+            date: new Date(editFormDraft.date).toISOString(),
+            status: editFormDraft.status,
+            tuteur_id: editFormDraft.tuteurId,
+            professeur_id: editFormDraft.professeurId,
+            apprenti_id: editFormDraft.apprentiId,
+            intervenant_id: editFormDraft.intervenantId,
+          }),
+        });
+        closeEditModal();
+        await fetchJuries();
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "La mise a jour du jury a echoue.";
+        setUpdateError(message);
+      } finally {
+        setIsUpdatingJury(false);
+      }
+    },
+    [closeEditModal, editFormDraft, editingJuryId, fetchJuries, token]
+  );
+
+  const handleDeleteJury = React.useCallback(
+    async (jury: JuryRecord) => {
+      if (!token) {
+        setDeleteError("Authentification requise pour supprimer un jury.");
+        return;
+      }
+      const confirmation = window.confirm(
+        `Voulez-vous supprimer le jury du ${new Date(jury.date).toLocaleString("fr-FR")}?`
+      );
+      if (!confirmation) return;
+      setDeleteError(null);
+      try {
+        await fetchJson<void>(`${JURY_API_URL}/juries/${jury.id}`, {
+          method: "DELETE",
+          token,
+        });
+        if (editingJuryId === jury.id) {
+          closeEditModal();
+        }
+        await fetchJuries();
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "La suppression du jury a echoue.";
+        setDeleteError(message);
+      }
+    },
+    [closeEditModal, editingJuryId, fetchJuries, token]
+  );
+
+  const handleQuickStatusChange = React.useCallback(
+    async (juryId: string, status: JuryStatus) => {
+      if (!token) return;
+      setStatusUpdatingMap((current) => ({ ...current, [juryId]: true }));
+      setStatusErrorMap((current) => ({ ...current, [juryId]: null }));
+      try {
+        await fetchJson<JuryRecord>(`${JURY_API_URL}/juries/${juryId}`, {
+          method: "PATCH",
+          token,
+          body: JSON.stringify({ status }),
+        });
+        await fetchJuries();
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Echec de la mise a jour du statut.";
+        setStatusErrorMap((current) => ({ ...current, [juryId]: message }));
+      } finally {
+        setStatusUpdatingMap((current) => ({ ...current, [juryId]: false }));
+      }
+    },
+    [fetchJuries, token]
   );
 
   if (!canAccessPage) {
@@ -778,6 +963,7 @@ export default function Juries() {
           )}
         </header>
         {juryError && <p style={{ color: "#b91c1c" }}>{juryError}</p>}
+        {deleteError && <p style={{ color: "#b91c1c" }}>{deleteError}</p>}
         {isLoadingJuries ? (
           <p>Chargement des jurys...</p>
         ) : juriesToDisplay.length === 0 ? (
@@ -828,17 +1014,39 @@ export default function Juries() {
                       </p>
                     )}
                   </div>
-                  <span
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 999,
-                      fontSize: 13,
-                      fontWeight: 600,
-                      ...STATUS_BADGE_STYLES[jury.status],
-                    }}
-                  >
-                    {STATUS_LABELS[jury.status]}
-                  </span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 200 }}>
+                    <span
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 999,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        textAlign: "center",
+                        ...STATUS_BADGE_STYLES[jury.status],
+                      }}
+                    >
+                      {STATUS_LABELS[jury.status]}
+                    </span>
+                    {canChangeStatusForJury(jury) ? (
+                      <select
+                        value={jury.status}
+                        onChange={(event) =>
+                          handleQuickStatusChange(jury.id, event.target.value as JuryStatus)
+                        }
+                        className="jury-status-select"
+                        disabled={Boolean(statusUpdatingMap[jury.id])}
+                      >
+                        {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                    {statusErrorMap[jury.id] ? (
+                      <small style={{ color: "#b91c1c" }}>{statusErrorMap[jury.id]}</small>
+                    ) : null}
+                  </div>
                 </div>
                 <div
                   style={{
@@ -872,6 +1080,20 @@ export default function Juries() {
                     <p style={{ margin: "4px 0 0" }}>{formatMember(jury.members.intervenant)}</p>
                   </div>
                 </div>
+                {canManageJuries ? (
+                  <div className="jury-card-actions">
+                    <button type="button" onClick={() => openEditModal(jury)}>
+                      Modifier
+                    </button>
+                    <button
+                      type="button"
+                      className="is-danger"
+                      onClick={() => handleDeleteJury(jury)}
+                    >
+                      Supprimer
+                    </button>
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>
@@ -890,6 +1112,172 @@ export default function Juries() {
           {groupedDocumentsSection}
         </article>
       )}
+      {editingJuryId ? (
+        <div className="jury-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="jury-modal">
+            <header className="jury-modal-header">
+              <h2>Modifier le jury</h2>
+              <button type="button" onClick={closeEditModal} aria-label="Fermer">
+                &times;
+              </button>
+            </header>
+            <form className="jury-modal-form" onSubmit={handleUpdateJury}>
+              <div className="jury-modal-grid">
+                <label>
+                  <span>Promotion</span>
+                  <select
+                    value={editFormDraft.promotionId}
+                    onChange={(event) => handleEditFormChange("promotionId", event.target.value)}
+                    required
+                  >
+                    <option value="">Sélectionner une promotion</option>
+                    {timelineOptions.map((option) => (
+                      <option key={option.promotion_id} value={option.promotion_id}>
+                        {option.label
+                          ? `${option.label} (${option.annee_academique})`
+                          : option.annee_academique}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Semestre</span>
+                  <select
+                    value={editFormDraft.semesterId}
+                    onChange={(event) => handleEditFormChange("semesterId", event.target.value)}
+                    required
+                    disabled={!editFormDraft.promotionId || editAvailableSemesters.length === 0}
+                  >
+                    <option value="">
+                      {editFormDraft.promotionId
+                        ? "Sélectionner un semestre"
+                        : "Choisissez une promotion"}
+                    </option>
+                    {editAvailableSemesters.map((semester) => (
+                      <option key={semester.semester_id} value={semester.semester_id}>
+                        {semester.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Livrable (optionnel)</span>
+                  <select
+                    value={editFormDraft.deliverableId}
+                    onChange={(event) => handleEditFormChange("deliverableId", event.target.value)}
+                    disabled={!editFormDraft.semesterId || editAvailableDeliverables.length === 0}
+                  >
+                    <option value="">
+                      {editAvailableDeliverables.length
+                        ? "Aucun livrable particulier"
+                        : "Aucun livrable défini"}
+                    </option>
+                    {editAvailableDeliverables.map((deliverable) => (
+                      <option key={deliverable.deliverable_id} value={deliverable.deliverable_id}>
+                        {deliverable.title}
+                        {deliverable.due_date ? ` - ${deliverable.due_date}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Date et heure</span>
+                  <input
+                    type="datetime-local"
+                    value={editFormDraft.date}
+                    onChange={(event) => handleEditFormChange("date", event.target.value)}
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Status</span>
+                  <select
+                    value={editFormDraft.status}
+                    onChange={(event) =>
+                      handleEditFormChange("status", event.target.value as JuryStatus)
+                    }
+                  >
+                    {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Tuteur pédagogique</span>
+                  <select
+                    value={editFormDraft.tuteurId}
+                    onChange={(event) => handleEditFormChange("tuteurId", event.target.value)}
+                    required
+                  >
+                    <option value="">Sélectionner un tuteur</option>
+                    {userOptions.tutors.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label} {option.email ? `- ${option.email}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Professeur</span>
+                  <select
+                    value={editFormDraft.professeurId}
+                    onChange={(event) => handleEditFormChange("professeurId", event.target.value)}
+                    required
+                  >
+                    <option value="">Sélectionner un professeur</option>
+                    {userOptions.professors.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label} {option.email ? `- ${option.email}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Apprenti</span>
+                  <select
+                    value={editFormDraft.apprentiId}
+                    onChange={(event) => handleEditFormChange("apprentiId", event.target.value)}
+                    required
+                  >
+                    <option value="">Sélectionner un apprenti</option>
+                    {userOptions.apprentices.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label} {option.email ? `- ${option.email}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Intervenant</span>
+                  <select
+                    value={editFormDraft.intervenantId}
+                    onChange={(event) => handleEditFormChange("intervenantId", event.target.value)}
+                    required
+                  >
+                    <option value="">Sélectionner un intervenant</option>
+                    {userOptions.intervenants.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label} {option.email ? `- ${option.email}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {updateError && <p className="jury-modal-error">{updateError}</p>}
+              <div className="jury-modal-actions">
+                <button type="button" onClick={closeEditModal} className="secondary">
+                  Annuler
+                </button>
+                <button type="submit" disabled={isUpdatingJury}>
+                  {isUpdatingJury ? "Mise à jour..." : "Enregistrer les modifications"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
