@@ -827,7 +827,7 @@ export default function Promotions() {
               type="text"
               value={formValues.anneeAcademique}
               onChange={(event) => handleFormChange("anneeAcademique", event.target.value)}
-              placeholder="Ex: 2024-2025 ou E5a"
+              placeholder="Ex: E3a ou E5a"
               required
             />
           </label>

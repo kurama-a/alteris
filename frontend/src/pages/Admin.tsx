@@ -7,6 +7,7 @@ type EditableUser = UserSummary & {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  anneeAcademique?: string;
 };
 
 type UsersResponse = {
@@ -179,6 +180,7 @@ function buildUpdatePayloadFromDraft(draft: EditableUser, fallbackRole: string) 
   assign("roles", draft.roles);
   assign("roleLabel", draft.roleLabel);
   assign("perms", draft.perms);
+  assign("annee_academique", draft.anneeAcademique);
 
   return payload;
 }
@@ -200,9 +202,31 @@ const modalContainerStyle: React.CSSProperties = {
   backgroundColor: "#fff",
   borderRadius: 8,
   boxShadow: "0 20px 45px rgba(15, 23, 42, 0.25)",
-  maxWidth: 520,
+  maxWidth: 760,
   width: "100%",
   padding: "24px 28px",
+};
+
+const modalFormGridStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 12,
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+};
+
+const stackedFieldStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+};
+
+const fullWidthFieldStyle: React.CSSProperties = {
+  gridColumn: "1 / -1",
+};
+
+const inputStyle: React.CSSProperties = {
+  padding: "10px 12px",
+  borderRadius: 6,
+  border: "1px solid #cbd5f5",
 };
 
 function Modal({
@@ -266,12 +290,17 @@ export default function Admin() {
     (user: UserSummary): EditableUser => {
       const inferredRole = inferRoleFromSummary(user);
       const nameParts = splitFullName(user.fullName);
+      const promotionYear =
+        (user as UserSummary & { anneeAcademique?: string }).anneeAcademique ??
+        (user as UserSummary & { annee_academique?: string }).annee_academique ??
+        "";
       return {
         ...user,
         role: user.role ?? inferredRole,
         firstName: user.firstName ?? nameParts.firstName,
         lastName: user.lastName ?? nameParts.lastName,
         phone: user.phone ?? "",
+        anneeAcademique: promotionYear,
       };
     },
     []
@@ -440,6 +469,7 @@ export default function Admin() {
       firstName: user.firstName ?? names.firstName ?? "",
       lastName: user.lastName ?? names.lastName ?? "",
       phone: user.phone ?? "",
+      anneeAcademique: user.anneeAcademique ?? "",
     });
     const existingTutorId =
       (user as EditableUser & { tuteur?: { tuteur_id?: string } }).tuteur?.tuteur_id ?? "";
@@ -549,17 +579,19 @@ export default function Admin() {
         }
         if (key === "role") {
           const option = ROLE_VALUE_TO_OPTION[value];
-          if (value !== "apprenti") {
-            setEditTutorId("");
-            setEditMasterId("");
-            setEditEnterpriseId("");
-          }
-          return {
+          const next = {
             ...current,
             role: value,
             roleLabel: option?.label ?? current.roleLabel,
             roles: option ? [option.label] : current.roles,
           };
+          if (value !== "apprenti") {
+            setEditTutorId("");
+            setEditMasterId("");
+            setEditEnterpriseId("");
+            return { ...next, anneeAcademique: "" };
+          }
+          return next;
         }
         return { ...current, [key]: value };
       });
@@ -577,6 +609,11 @@ export default function Admin() {
     const roleForRoute = editUser.role ?? editDraft.role;
     if (!roleForRoute) {
       setActionError("Rôle introuvable pour cet utilisateur.");
+      return;
+    }
+
+    if (editDraft.role === "apprenti" && !editDraft.anneeAcademique) {
+      setActionError("Merci de selectionner une promotion pour cet apprenti.");
       return;
     }
 
@@ -703,6 +740,7 @@ export default function Admin() {
           tutorId: "",
           masterId: "",
           enterpriseId: "",
+          anneeAcademique: "",
         };
       }
       return { ...current, [key]: value };
@@ -712,6 +750,11 @@ export default function Admin() {
   const submitCreate = React.useCallback(async () => {
     if (!token) {
       setActionError("Authentification requise pour créer un utilisateur.");
+      return;
+    }
+
+    if (createDraft.role === "apprenti" && !createDraft.anneeAcademique) {
+      setActionError("Merci de selectionner une promotion pour cet apprenti.");
       return;
     }
 
@@ -1116,81 +1159,81 @@ export default function Admin() {
               event.preventDefault();
               submitCreate();
             }}
-            style={{ display: "flex", flexDirection: "column", gap: 16 }}
+            style={{ display: "flex", flexDirection: "column", gap: 24 }}
           >
-            <div style={{ display: "flex", gap: 12 }}>
-              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={modalFormGridStyle}>
+              <label style={stackedFieldStyle}>
                 <span>Prénom</span>
                 <input
                   type="text"
                   value={createDraft.firstName}
                   onChange={(event) => handleCreateChange("firstName", event.target.value)}
-                  style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                  style={inputStyle}
                   required
                 />
               </label>
-              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={stackedFieldStyle}>
                 <span>Nom</span>
                 <input
                   type="text"
                   value={createDraft.lastName}
                   onChange={(event) => handleCreateChange("lastName", event.target.value)}
-                  style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                  style={inputStyle}
                   required
                 />
               </label>
+              <label style={{ ...stackedFieldStyle, ...fullWidthFieldStyle }}>
+                <span>Email</span>
+                <input
+                  type="email"
+                  value={createDraft.email}
+                  onChange={(event) => handleCreateChange("email", event.target.value)}
+                  style={inputStyle}
+                  required
+                />
+              </label>
+              <label style={{ ...stackedFieldStyle, ...fullWidthFieldStyle }}>
+                <span>Téléphone</span>
+                <input
+                  type="tel"
+                  value={createDraft.phone}
+                  onChange={(event) => handleCreateChange("phone", event.target.value)}
+                  style={inputStyle}
+                />
+              </label>
+              <label style={{ ...stackedFieldStyle, ...fullWidthFieldStyle }}>
+                <span>Mot de passe</span>
+                <input
+                  type="password"
+                  value={createDraft.password}
+                  onChange={(event) => handleCreateChange("password", event.target.value)}
+                  style={inputStyle}
+                  required
+                />
+              </label>
+              <label style={{ ...stackedFieldStyle, ...fullWidthFieldStyle }}>
+                <span>Rôle</span>
+                <select
+                  value={createDraft.role}
+                  onChange={(event) => handleCreateChange("role", event.target.value)}
+                  style={inputStyle}
+                >
+                  {ROLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
-            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span>Email</span>
-              <input
-                type="email"
-                value={createDraft.email}
-                onChange={(event) => handleCreateChange("email", event.target.value)}
-                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
-                required
-              />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span>Téléphone</span>
-              <input
-                type="tel"
-                value={createDraft.phone}
-                onChange={(event) => handleCreateChange("phone", event.target.value)}
-                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
-              />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span>Mot de passe</span>
-              <input
-                type="password"
-                value={createDraft.password}
-                onChange={(event) => handleCreateChange("password", event.target.value)}
-                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
-                required
-              />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span>Rôle</span>
-              <select
-                value={createDraft.role}
-                onChange={(event) => handleCreateChange("role", event.target.value)}
-                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
-              >
-                {ROLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
             {createDraft.role === "apprenti" && (
-              <>
-                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={modalFormGridStyle}>
+                <label style={{ ...stackedFieldStyle, ...fullWidthFieldStyle }}>
                   <span>Promotion (année académique)</span>
                   <select
                     value={createDraft.anneeAcademique}
                     onChange={(event) => handleCreateChange("anneeAcademique", event.target.value)}
-                    style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                    style={inputStyle}
                     disabled={isLoadingPromotions || promotions.length === 0}
                     required
                   >
@@ -1207,17 +1250,17 @@ export default function Admin() {
                     <small style={{ color: "#b45309" }}>{promotionError}</small>
                   )}
                 </label>
-                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={stackedFieldStyle}>
                   <span>Tuteur pédagogique</span>
                   <select
                     value={createDraft.tutorId}
                     onChange={(event) => handleCreateChange("tutorId", event.target.value)}
-                    style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                    style={inputStyle}
                   >
                     <option value="">Aucun tuteur</option>
                     {tutors.map((tutor) => (
                       <option key={tutor.id} value={tutor.id}>
-                        {tutor.fullName} — {tutor.email}
+                        {tutor.fullName} - {tutor.email}
                       </option>
                     ))}
                   </select>
@@ -1225,17 +1268,17 @@ export default function Admin() {
                     <small style={{ color: "#b45309" }}>Aucun tuteur disponible pour le moment.</small>
                   )}
                 </label>
-                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={stackedFieldStyle}>
                   <span>Maître d'apprentissage</span>
                   <select
                     value={createDraft.masterId}
                     onChange={(event) => handleCreateChange("masterId", event.target.value)}
-                    style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                    style={inputStyle}
                   >
                     <option value="">Aucun maître</option>
                     {masters.map((master) => (
                       <option key={master.id} value={master.id}>
-                        {master.fullName} — {master.email}
+                        {master.fullName} - {master.email}
                       </option>
                     ))}
                   </select>
@@ -1243,12 +1286,12 @@ export default function Admin() {
                     <small style={{ color: "#b45309" }}>Aucun maître disponible pour le moment.</small>
                   )}
                 </label>
-                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={stackedFieldStyle}>
                   <span>Entreprise partenaire</span>
                   <select
                     value={createDraft.enterpriseId}
                     onChange={(event) => handleCreateChange("enterpriseId", event.target.value)}
-                    style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                    style={inputStyle}
                   >
                     <option value="">Aucune entreprise</option>
                     {enterprises.map((enterprise) => (
@@ -1264,7 +1307,7 @@ export default function Admin() {
                     </small>
                   )}
                 </label>
-              </>
+              </div>
             )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
               <button
@@ -1306,76 +1349,98 @@ export default function Admin() {
               event.preventDefault();
               saveEdit();
             }}
-            style={{ display: "flex", flexDirection: "column", gap: 16 }}
+            style={{ display: "flex", flexDirection: "column", gap: 24 }}
           >
-            <div style={{ display: "flex", gap: 12 }}>
-              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={modalFormGridStyle}>
+              <label style={stackedFieldStyle}>
                 <span>Prénom</span>
                 <input
                   type="text"
                   value={editDraft.firstName ?? ""}
                   onChange={(event) => handleEditChange("firstName", event.target.value)}
-                  style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                  style={inputStyle}
                   required
                 />
               </label>
-              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={stackedFieldStyle}>
                 <span>Nom</span>
                 <input
                   type="text"
                   value={editDraft.lastName ?? ""}
                   onChange={(event) => handleEditChange("lastName", event.target.value)}
-                  style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                  style={inputStyle}
                   required
                 />
               </label>
+              <label style={{ ...stackedFieldStyle, ...fullWidthFieldStyle }}>
+                <span>Email</span>
+                <input
+                  type="email"
+                  value={editDraft.email}
+                  onChange={(event) => handleEditChange("email", event.target.value)}
+                  style={inputStyle}
+                  required
+                />
+              </label>
+              <label style={{ ...stackedFieldStyle, ...fullWidthFieldStyle }}>
+                <span>Téléphone</span>
+                <input
+                  type="tel"
+                  value={editDraft.phone ?? ""}
+                  onChange={(event) => handleEditChange("phone", event.target.value)}
+                  style={inputStyle}
+                />
+              </label>
+              <label style={{ ...stackedFieldStyle, ...fullWidthFieldStyle }}>
+                <span>Rôle</span>
+                <select
+                  value={editDraft.role ?? ""}
+                  onChange={(event) => handleEditChange("role", event.target.value)}
+                  style={inputStyle}
+                >
+                  {ROLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
-            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span>Email</span>
-              <input
-                type="email"
-                value={editDraft.email}
-                onChange={(event) => handleEditChange("email", event.target.value)}
-                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
-                required
-              />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span>Téléphone</span>
-              <input
-                type="tel"
-                value={editDraft.phone ?? ""}
-                onChange={(event) => handleEditChange("phone", event.target.value)}
-                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
-              />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span>Rôle</span>
-              <select
-                value={editDraft.role ?? ""}
-                onChange={(event) => handleEditChange("role", event.target.value)}
-                style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
-              >
-                {ROLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
             {editDraft.role === "apprenti" && (
-              <>
-                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={modalFormGridStyle}>
+                <label style={{ ...stackedFieldStyle, ...fullWidthFieldStyle }}>
+                  <span>Promotion (année académique)</span>
+                  <select
+                    value={editDraft.anneeAcademique ?? ""}
+                    onChange={(event) => handleEditChange("anneeAcademique", event.target.value)}
+                    style={inputStyle}
+                    disabled={isLoadingPromotions || promotions.length === 0}
+                    required
+                  >
+                    <option value="">
+                      {isLoadingPromotions ? "Chargement des promotions..." : "Sélectionnez une promotion"}
+                    </option>
+                    {promotions.map((promotion) => (
+                      <option key={promotion.id} value={promotion.anneeAcademique}>
+                        {promotion.label} ({promotion.anneeAcademique})
+                      </option>
+                    ))}
+                  </select>
+                  {promotionError && (
+                    <small style={{ color: "#b45309" }}>{promotionError}</small>
+                  )}
+                </label>
+                <label style={stackedFieldStyle}>
                   <span>Tuteur pédagogique</span>
                   <select
                     value={editTutorId}
                     onChange={(event) => setEditTutorId(event.target.value)}
-                    style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                    style={inputStyle}
                   >
                     <option value="">Aucun tuteur</option>
                     {tutors.map((tutor) => (
                       <option key={tutor.id} value={tutor.id}>
-                        {tutor.fullName} — {tutor.email}
+                        {tutor.fullName} - {tutor.email}
                       </option>
                     ))}
                   </select>
@@ -1383,17 +1448,17 @@ export default function Admin() {
                     <small style={{ color: "#b45309" }}>Aucun tuteur disponible pour le moment.</small>
                   )}
                 </label>
-                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={stackedFieldStyle}>
                   <span>Maître d'apprentissage</span>
                   <select
                     value={editMasterId}
                     onChange={(event) => setEditMasterId(event.target.value)}
-                    style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                    style={inputStyle}
                   >
                     <option value="">Aucun maître</option>
                     {masters.map((master) => (
                       <option key={master.id} value={master.id}>
-                        {master.fullName} — {master.email}
+                        {master.fullName} - {master.email}
                       </option>
                     ))}
                   </select>
@@ -1401,12 +1466,12 @@ export default function Admin() {
                     <small style={{ color: "#b45309" }}>Aucun maître disponible pour le moment.</small>
                   )}
                 </label>
-                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={stackedFieldStyle}>
                   <span>Entreprise partenaire</span>
                   <select
                     value={editEnterpriseId}
                     onChange={(event) => setEditEnterpriseId(event.target.value)}
-                    style={{ padding: "10px 12px", borderRadius: 6, border: "1px solid #cbd5f5" }}
+                    style={inputStyle}
                   >
                     <option value="">Aucune entreprise</option>
                     {enterprises.map((enterprise) => (
@@ -1422,7 +1487,7 @@ export default function Admin() {
                     </small>
                   )}
                 </label>
-              </>
+              </div>
             )}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
               <button
@@ -1506,4 +1571,3 @@ export default function Admin() {
     </div>
   );
 }
-
