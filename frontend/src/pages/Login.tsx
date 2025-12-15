@@ -42,31 +42,71 @@ export default function Login() {
 
   return (
     <div className="login-page">
-      <div className="login-box">
-        <h1 className="login-title">Alteris - Connexion</h1>
-        <form className="login-form" onSubmit={handleSubmit} noValidate>
-          <input
-            type="email"
-            placeholder="Email"
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            required
-          />
-          <input
-            type="password"
-            placeholder="Mot de passe"
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
-          {error ? <div className="error-message">{error}</div> : null}
-          <button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Connexion..." : "Se connecter"}
-          </button>
-        </form>
+      <div className="login-shell">
+        <section className="login-panel">
+          <h1 className="login-title">
+            Bienvenue sur <span>Alteris</span>
+          </h1>
+          <p className="login-subtitle">
+            Connectez-vous pour orchestrer les promotions, suivre les jurys et accompagner chaque
+            apprenti tout au long de son parcours.
+          </p>
 
+          <form className="login-form" onSubmit={handleSubmit} noValidate>
+            <label className="input-label">
+              <span>Adresse e-mail</span>
+              <input
+                type="email"
+                placeholder="prenom.nom@alteris.com"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
+            </label>
+            <label className="input-label">
+              <span>Mot de passe</span>
+              <input
+                type="password"
+                placeholder="••••••••"
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
+            </label>
+            {error ? <div className="error-message">{error}</div> : null}
+            <button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Connexion..." : "Se connecter"}
+            </button>
+          </form>
+
+          <ul className="login-highlights">
+            <li>
+              <span aria-hidden="true">✓</span> Gestion centralisée des promotions et jurys.
+            </li>
+            <li>
+              <span aria-hidden="true">✓</span> Suivi pédagogique et documents partagés.
+            </li>
+            <li>
+              <span aria-hidden="true">✓</span> Accès sécurisé pour chaque profil Alteris.
+            </li>
+          </ul>
+        </section>
+
+        <section className="login-hero" aria-hidden="true">
+          <div className="login-hero-overlay">
+            <p className="login-hero-chip">Plateforme Alteris</p>
+            <h2>
+              Construisez des parcours apprenants mémorables avec une équipe alignée sur les mêmes
+              jalons.
+            </h2>
+            <p>
+              Visualisez les semestres, préparez les jurys et échangez avec les entreprises autour
+              des mêmes informations.
+            </p>
+          </div>
+        </section>
       </div>
     </div>
   );

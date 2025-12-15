@@ -12,46 +12,92 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 24px;
-  background-color: #ffffff;
-  border-bottom: 2px solid #e0e0e0;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  padding: 14px 28px;
+  background: linear-gradient(90deg, #ffffff 30%, #eef4ff 100%);
+  border-bottom: 1px solid #e0e7ff;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.08);
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 
 /* Logo */
 .logo-link {
   display: inline-flex;
   align-items: center;
+  gap: 12px;
+  text-decoration: none;
 }
 
 .navbar-logo {
-  height: 42px;
+  height: 48px;
+  width: 48px;
   object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.15);
+}
+
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.logo-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 0.02em;
+}
+
+.logo-tagline {
+  font-size: 12px;
+  color: #475569;
 }
 
 /* Liens du menu */
 .navbar-center {
   display: flex;
-  gap: 20px;
+  gap: 18px;
 }
 
 .nav-link {
   text-decoration: none;
-  color: #333;
-  font-weight: 500;
+  color: #475569;
+  font-weight: 600;
   font-size: 15px;
-  padding-bottom: 4px;
-  transition: color 0.2s ease, border-color 0.2s ease;
-  border-bottom: 2px solid transparent;
+  padding: 10px 14px;
+  border-radius: 999px;
+  transition: color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+  display: inline-flex;
+  align-items: center;
 }
 
 .nav-link:hover {
-  color: #007bff;
+  color: #1d4ed8;
+  transform: translateY(-1px);
 }
 
 .nav-link.active {
-  color: #007bff;
-  border-bottom-color: #007bff;
+  background: #e0ebff;
+  color: #1d4ed8;
+}
+
+.nav-link-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+}
+
+.nav-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 /* --- Infos utilisateur --- */
@@ -77,23 +123,25 @@
 .user-role {
   font-size: 12px;
   font-weight: 500;
-  color: #4a4a4a; /* gris fonce Alteris */
+  color: #334155;
 }
 
 .logout-button {
   margin-top: 6px;
-  background: none;
+  background: #ffe4e6;
   border: none;
-  color: #d9534f;
+  color: #be123c;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  padding: 4px 0;
-  transition: color 0.2s ease;
+  padding: 6px 12px;
+  border-radius: 999px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .logout-button:hover {
-  color: #c9302c;
+  box-shadow: 0 6px 14px rgba(190, 18, 60, 0.25);
+  transform: translateY(-1px);
 }
 
 /* --- Contenu principal --- */
