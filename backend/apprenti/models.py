@@ -56,6 +56,7 @@ class SemesterDocumentsModel(BaseModel):
     semester_id: str
     name: str
     documents: List[JournalDocumentModel] = Field(default_factory=list)
+    deliverables: List[DocumentDefinitionModel] = Field(default_factory=list)
 
 
 class PromotionSummaryModel(BaseModel):

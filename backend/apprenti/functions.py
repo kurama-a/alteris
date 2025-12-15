@@ -454,6 +454,36 @@ def _allowed_extensions(category: str) -> List[str]:
     raise HTTPException(status_code=400, detail="Categorie de document inconnue")
 
 
+def _deliverable_definition(deliverable: Dict[str, Any]) -> Dict[str, Any]:
+    base = None
+    deliverable_id = deliverable.get("deliverable_id") or deliverable.get("id")
+    if deliverable_id:
+        base = next(
+            (
+                definition
+                for definition in DOCUMENT_DEFINITIONS
+                if definition["id"] == deliverable_id
+            ),
+            None,
+        )
+    if not deliverable_id and base:
+        deliverable_id = base["id"]
+    if not deliverable_id:
+        deliverable_id = str(ObjectId())
+    label = deliverable.get("title") or (base["label"] if base else deliverable_id)
+    description = deliverable.get("description") or (base["description"] if base else "")
+    due_date = deliverable.get("due_date")
+    if due_date:
+        description = f"{description} (Echeance : {due_date})".strip()
+    accept = base["accept"] if base else ".pdf,.doc,.docx"
+    return {
+        "id": deliverable_id,
+        "label": label,
+        "description": description,
+        "accept": accept,
+    }
+
+
 async def _retrieve_apprenti_and_promotion(apprenti_id: str):
     apprenti_collection = get_collection("apprenti")
     apprenti = await apprenti_collection.find_one({"_id": ObjectId(apprenti_id)})
@@ -517,10 +547,15 @@ async def list_journal_documents(apprenti_id: str) -> Dict[str, Any]:
         semester_id = _normalize_semester_id(semester.get("semester_id") or semester.get("id"))
         if not semester_id:
             continue
+        deliverables_source = semester.get("deliverables") or []
+        deliverables_payload = [
+            _deliverable_definition(deliverable) for deliverable in deliverables_source
+        ]
         semesters_payload.append(
             {
                 "semester_id": semester_id,
                 "name": semester.get("name") or semester_id,
+                "deliverables": deliverables_payload,
                 "documents": documents_by_semester.get(semester_id, []),
             }
         )

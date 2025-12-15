@@ -13,6 +13,8 @@ type PromotionDeliverable = {
 type PromotionSemester = {
   semester_id?: string;
   name?: string;
+  start_date?: string;
+  end_date?: string;
   deliverables?: PromotionDeliverable[];
 };
 
@@ -34,6 +36,7 @@ type CalendarDeliverable = {
   dateKey: string;
   semesterName: string;
   promotionLabel: string;
+  semesterKey: string;
 };
 
 type CalendarDay = {
@@ -43,7 +46,27 @@ type CalendarDay = {
   isToday: boolean;
 };
 
+type CalendarSemesterRange = {
+  id: string;
+  label: string;
+  start: Date;
+  end: Date;
+  color: string;
+};
+
 const WEEK_DAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+const SEMESTER_COLOR_PALETTE = [
+  "#fde6b3",
+  "#c7e9fb",
+  "#ffd6e8",
+  "#d8f2c4",
+  "#fbe7ff",
+  "#ffe5d4",
+  "#d9ddff",
+  "#c9f0e1",
+  "#f7d8c7",
+  "#e8d9ff",
+];
 
 function formatDateKey(date: Date): string {
   const copy = new Date(date);
@@ -73,10 +96,16 @@ function buildCalendarDays(referenceDate: Date): CalendarDay[] {
   return days;
 }
 
+function buildSemesterKey(promotionId: string, semester: PromotionSemester, fallbackIndex: number): string {
+  const base = semester.semester_id ?? semester.name ?? `semester-${fallbackIndex}`;
+  return `${promotionId}-${base}`;
+}
+
 export default function Accueil() {
   const me = useMe();
   const { token } = useAuth();
   const [deliverables, setDeliverables] = React.useState<CalendarDeliverable[]>([]);
+  const [semesterRanges, setSemesterRanges] = React.useState<CalendarSemesterRange[]>([]);
   const [calendarError, setCalendarError] = React.useState<string | null>(null);
   const [isLoadingCalendar, setIsLoadingCalendar] = React.useState(false);
   const [currentMonth, setCurrentMonth] = React.useState(() => new Date());
@@ -102,6 +131,7 @@ export default function Accueil() {
   React.useEffect(() => {
     if (!token) {
       setDeliverables([]);
+      setSemesterRanges([]);
       return;
     }
     let cancelled = false;
@@ -124,13 +154,36 @@ export default function Accueil() {
         const sourcePromotions =
           shouldRestrictToPromo && scopedPromotions.length > 0 ? scopedPromotions : allPromotions;
         const normalized: CalendarDeliverable[] = [];
+        const ranges: CalendarSemesterRange[] = [];
+        let paletteIndex = 0;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
         sourcePromotions.forEach((promotion) => {
           const promotionLabel = promotion.label || promotion.annee_academique || "Promotion";
-          (promotion.semesters ?? []).forEach((semester) => {
+          (promotion.semesters ?? []).forEach((semester, semesterIndex) => {
             const semesterName = semester.name || "Semestre";
+            const semesterKey = buildSemesterKey(promotion.id, semester, semesterIndex);
+            const startValue = semester.start_date?.trim();
+            const endValue = semester.end_date?.trim();
+            if (startValue && endValue) {
+              const startDate = new Date(startValue);
+              const endDate = new Date(endValue);
+              if (!Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime())) {
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setHours(0, 0, 0, 0);
+                if (endDate >= startDate) {
+                  ranges.push({
+                    id: semesterKey,
+                    label: `${semesterName} • ${promotionLabel}`,
+                    start: startDate,
+                    end: endDate,
+                    color: SEMESTER_COLOR_PALETTE[paletteIndex % SEMESTER_COLOR_PALETTE.length],
+                  });
+                  paletteIndex += 1;
+                }
+              }
+            }
             (semester.deliverables ?? []).forEach((deliverable) => {
               const dueDateValue = deliverable.due_date?.trim();
               if (!dueDateValue) {
@@ -150,6 +203,7 @@ export default function Accueil() {
                 dateKey,
                 semesterName,
                 promotionLabel,
+                semesterKey,
               });
             });
           });
@@ -157,6 +211,7 @@ export default function Accueil() {
 
         normalized.sort((a, b) => a.date.getTime() - b.date.getTime());
         setDeliverables(normalized);
+        setSemesterRanges(ranges);
 
         const nextUpcoming = normalized.find((item) => item.date >= today) ?? normalized[0];
         if (nextUpcoming) {
@@ -174,6 +229,7 @@ export default function Accueil() {
             : "Impossible de charger les echeances des promotions.";
         setCalendarError(message);
         setDeliverables([]);
+        setSemesterRanges([]);
       })
       .finally(() => {
         if (!cancelled) {
@@ -196,6 +252,14 @@ export default function Accueil() {
     });
     return map;
   }, [deliverables]);
+
+  const semesterColorMap = React.useMemo(() => {
+    const assignments: Record<string, string> = {};
+    semesterRanges.forEach((range) => {
+      assignments[range.id] = range.color;
+    });
+    return assignments;
+  }, [semesterRanges]);
 
   const calendarDays = React.useMemo(() => buildCalendarDays(currentMonth), [currentMonth]);
 
@@ -267,20 +331,64 @@ export default function Accueil() {
             <div className="calendar-grid">
               {calendarDays.map((day) => {
                 const events = eventsByDate[day.dateKey] ?? [];
+                const coveringRanges = semesterRanges.filter(
+                  (range) => day.date >= range.start && day.date <= range.end
+                );
                 const classes = [
                   "calendar-cell",
                   day.isCurrentMonth ? "" : "is-muted",
                   day.isToday ? "is-today" : "",
+                  coveringRanges.length > 0 ? "has-semester" : "",
                 ]
                   .filter(Boolean)
                   .join(" ");
+                const uniqueColors = coveringRanges.map((range) => range.color);
+                let cellStyle: React.CSSProperties | undefined;
+                if (uniqueColors.length === 1) {
+                  cellStyle = { backgroundColor: uniqueColors[0] };
+                } else if (uniqueColors.length > 1) {
+                  const gradientStops = uniqueColors
+                    .map((color, index) => {
+                      const start = (index / uniqueColors.length) * 100;
+                      const end = ((index + 1) / uniqueColors.length) * 100;
+                      return `${color} ${start}% ${end}%`;
+                    })
+                    .join(", ");
+                  cellStyle = {
+                    backgroundImage: `linear-gradient(135deg, ${gradientStops})`,
+                    backgroundColor: uniqueColors[0],
+                  };
+                }
                 return (
-                  <div key={`${day.dateKey}-${day.date.getTime()}`} className={classes}>
+                  <div key={`${day.dateKey}-${day.date.getTime()}`} className={classes} style={cellStyle}>
                     <span className="calendar-day-number">{day.date.getDate()}</span>
                     <div className="calendar-tags">
                       {events.map((event) => (
-                        <span key={event.id} className="calendar-tag" title={`${event.title} - ${event.semesterName}`}>
-                          {event.title}
+                        <span
+                          key={event.id}
+                          className="calendar-tag"
+                          title={`${event.title} - ${event.semesterName}`}
+                          style={
+                            semesterColorMap[event.semesterKey]
+                              ? {
+                                  backgroundColor: semesterColorMap[event.semesterKey],
+                                  borderColor: semesterColorMap[event.semesterKey],
+                                }
+                              : undefined
+                          }
+                        >
+                          <span
+                            className="calendar-tag-dot"
+                            style={
+                              semesterColorMap[event.semesterKey]
+                                ? { backgroundColor: semesterColorMap[event.semesterKey] }
+                                : undefined
+                            }
+                          />
+                          <span className="calendar-tag-content">
+                            <strong>{event.title}</strong>
+                            <small>{event.semesterName}</small>
+                          </span>
                         </span>
                       ))}
                     </div>
@@ -288,6 +396,19 @@ export default function Accueil() {
                 );
               })}
             </div>
+            {semesterRanges.length > 0 ? (
+              <div className="calendar-legend">
+                <h3>Legende des semestres</h3>
+                <ul>
+                  {semesterRanges.map((range) => (
+                    <li key={`legend-${range.id}`}>
+                      <span className="legend-color" style={{ backgroundColor: range.color }} />
+                      <span>{range.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             {upcomingDeliverables.length > 0 ? (
               <div className="calendar-upcoming">
                 <h3>Prochaines echeances</h3>

@@ -390,6 +390,14 @@
   padding:8px 10px;
   font-size:14px;
 }
+.timeline-deliverable select.styled-select {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: #fff;
+  color: #1f2937;
+}
 
 .timeline-deliverables{
   display:flex;

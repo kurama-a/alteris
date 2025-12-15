@@ -29,6 +29,7 @@ export type SemesterDocumentsBlock = {
   semester_id: string;
   name: string;
   documents: JournalDocumentRecord[];
+  deliverables?: DocumentDefinition[];
 };
 
 export type PromotionSummary = {

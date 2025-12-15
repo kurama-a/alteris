@@ -417,7 +417,7 @@ export default function Journal() {
   const activeId = activeJournal?.id ?? selectedId ?? me.id ?? "";
 
   const documentsSemesters = documentsData?.semesters ?? [];
-  const documentCategories = documentsData?.categories ?? DOCUMENT_DEFINITIONS;
+  const defaultDocumentCategories = documentsData?.categories ?? DOCUMENT_DEFINITIONS;
   const promotionLabel = documentsData?.promotion
     ? documentsData.promotion.label || documentsData.promotion.annee_academique
     : null;
@@ -632,11 +632,20 @@ export default function Journal() {
               <header className="documents-semester-header">
                 <div>
                   <h3>{semester.name}</h3>
-                  <p>Livrables attendus : {documentCategories.length}</p>
+                  <p>
+                    Livrables attendus :{" "}
+                    {(semester.deliverables?.length ?? defaultDocumentCategories.length) || 0}
+                  </p>
                 </div>
               </header>
-              <div className="documents-grid">
-                {documentCategories.map((definition) => {
+              {(() => {
+                const categoriesForSemester =
+                  semester.deliverables && semester.deliverables.length > 0
+                    ? semester.deliverables
+                    : defaultDocumentCategories;
+                return (
+                  <div className="documents-grid">
+                    {categoriesForSemester.map((definition) => {
                   const record = semester.documents.find(
                     (doc) => doc.category === definition.id
                   );
@@ -748,7 +757,9 @@ export default function Journal() {
                     </article>
                   );
                 })}
-              </div>
+                  </div>
+                );
+              })()}
             </article>
           ))
         )}

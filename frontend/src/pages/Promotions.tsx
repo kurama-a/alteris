@@ -2,6 +2,7 @@ import React from "react";
 import "../styles/promotions.css";
 import { ADMIN_API_URL, AUTH_API_URL, fetchJson } from "../config";
 import { useAuth, type UserSummary } from "../auth/Permissions";
+import { DOCUMENT_DEFINITIONS } from "../documents/DocumentsContext";
 
 type ResponsableOption = {
   id: string;
@@ -137,15 +138,25 @@ const INITIAL_FORM_VALUES: FormValues = {
   semesters: [],
 };
 
+const DELIVERABLE_CHOICES = DOCUMENT_DEFINITIONS.map((definition) => ({
+  id: definition.id,
+  label: definition.label,
+  description: definition.description,
+}));
+
 type SemesterField = "name" | "startDate" | "endDate";
-type DeliverableField = "title" | "dueDate" | "description";
+type DeliverableField = "deliverable_id" | "title" | "dueDate" | "description";
 type SemesterUpdateDispatcher = (updater: (list: SemesterFormValues[]) => SemesterFormValues[]) => void;
 
-const createEmptyDeliverable = (): DeliverableFormValues => ({
-  title: "",
-  dueDate: "",
-  description: "",
-});
+const createEmptyDeliverable = (): DeliverableFormValues => {
+  const firstChoice = DELIVERABLE_CHOICES[0];
+  return {
+    deliverable_id: firstChoice?.id ?? "",
+    title: firstChoice?.label ?? "",
+    dueDate: "",
+    description: firstChoice?.description ?? "",
+  };
+};
 
 const createEmptySemester = (): SemesterFormValues => ({
   name: "",
@@ -167,12 +178,17 @@ const convertPromotionSemestersToDraft = (semesters?: SemesterRecord[]): Semeste
     name: semester.name ?? "",
     startDate: semester.start_date ?? "",
     endDate: semester.end_date ?? "",
-    deliverables: sortByOrder(semester.deliverables).map((deliverable) => ({
-      deliverable_id: deliverable.deliverable_id,
-      title: deliverable.title ?? "",
-      dueDate: deliverable.due_date ?? "",
-      description: deliverable.description ?? "",
-    })),
+  deliverables: sortByOrder(semester.deliverables).map((deliverable) => {
+      const matchedDefinition =
+        DOCUMENT_DEFINITIONS.find((definition) => definition.id === deliverable.deliverable_id) ??
+        DOCUMENT_DEFINITIONS.find((definition) => definition.label === deliverable.title);
+      return {
+        deliverable_id: deliverable.deliverable_id ?? matchedDefinition?.id,
+        title: deliverable.title ?? matchedDefinition?.label ?? "",
+        dueDate: deliverable.due_date ?? "",
+        description: deliverable.description ?? matchedDefinition?.description ?? "",
+      };
+    }),
   }));
 
 const serializeSemesters = (semesters: SemesterFormValues[]): SerializedSemesterPayload[] =>
@@ -359,20 +375,49 @@ function SemesterTimelineEditor({ semesters, actions, emptyLabel }: TimelineEdit
                   className="timeline-deliverable"
                 >
                   <label>
-                    Titre
-                    <input
-                      type="text"
-                      value={deliverable.title}
-                      onChange={(event) =>
+                    Type de livrable
+                    <select
+                      className="styled-select"
+                      value={deliverable.deliverable_id ?? ""}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        const definition = DOCUMENT_DEFINITIONS.find(
+                          (candidate) => candidate.id === value
+                        );
+                        actions.updateDeliverableField(
+                          semesterIndex,
+                          deliverableIndex,
+                          "deliverable_id",
+                          value
+                        );
                         actions.updateDeliverableField(
                           semesterIndex,
                           deliverableIndex,
                           "title",
-                          event.target.value
-                        )
-                      }
-                      placeholder="Ex: Rapport intermediaire"
-                    />
+                          definition?.label ?? deliverable.title
+                        );
+                        if (definition?.description) {
+                          actions.updateDeliverableField(
+                            semesterIndex,
+                            deliverableIndex,
+                            "description",
+                            definition.description
+                          );
+                        }
+                      }}
+                    >
+                      {DELIVERABLE_CHOICES.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                      {deliverable.deliverable_id &&
+                      !DELIVERABLE_CHOICES.some((option) => option.id === deliverable.deliverable_id) ? (
+                        <option value={deliverable.deliverable_id}>
+                          {deliverable.title || deliverable.deliverable_id}
+                        </option>
+                      ) : null}
+                    </select>
                   </label>
                   <label>
                     Echeance
@@ -875,7 +920,9 @@ export default function Promotions() {
               <option value="">Aucun responsable</option>
               {responsables.map((responsable) => (
                 <option key={responsable.id} value={responsable.id}>
-                  {responsable.fullName}  -  {responsable.email}
+                  {responsable.fullName}
+                          {" - "}
+                          {responsable.email}
                 </option>
               ))}
             </select>
@@ -1036,6 +1083,7 @@ export default function Promotions() {
                   <label>
                     Nommer / modifier la coordinatrice
                     <select
+                      className="styled-select"
                       value={selectedCoordinatrices[promotion.id] ?? ""}
                       onChange={(event) =>
                         setSelectedCoordinatrices((current) => ({
@@ -1044,12 +1092,13 @@ export default function Promotions() {
                         }))
                       }
                     >
-                      <option value="">Aucune coordinatrice</option>
-                      {coordinatrices.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.label || option.email || option.id}
-                        </option>
-                      ))}
+                    <option value="">Aucune coordinatrice</option>
+                    {coordinatrices.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label || option.email || option.id}
+                      </option>
+                      
+                    ))}
                     </select>
                   </label>
                   <button
@@ -1066,6 +1115,7 @@ export default function Promotions() {
                   <label>
                     Nommer / modifier le responsable
                     <select
+                      className="styled-select"
                       value={selectedResponsables[promotion.id] ?? ""}
                       onChange={(event) =>
                         setSelectedResponsables((current) => ({
