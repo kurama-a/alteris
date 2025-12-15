@@ -1,6 +1,9 @@
-from pydantic import BaseModel, Field, EmailStr
-from typing import Optional
 from datetime import datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, EmailStr, Field
+
+
 class HealthResponse(BaseModel):
     status: str
     service: str
@@ -16,3 +19,63 @@ class CreerEntretienRequest(BaseModel):
     apprenti_id: str
     date: datetime
     sujet: str
+
+
+class DocumentDefinitionModel(BaseModel):
+    id: str
+    label: str
+    description: str
+    accept: str
+
+
+class DocumentCommentModel(BaseModel):
+    comment_id: str
+    author_id: str
+    author_name: str
+    author_role: str
+    content: str
+    created_at: datetime
+
+
+class JournalDocumentModel(BaseModel):
+    id: str
+    semester_id: str
+    category: str
+    file_name: str
+    file_size: int
+    file_type: str
+    uploaded_at: datetime
+    uploader_id: str
+    uploader_name: str
+    uploader_role: str
+    download_url: str
+    comments: List[DocumentCommentModel] = Field(default_factory=list)
+
+
+class SemesterDocumentsModel(BaseModel):
+    semester_id: str
+    name: str
+    documents: List[JournalDocumentModel] = Field(default_factory=list)
+
+
+class PromotionSummaryModel(BaseModel):
+    promotion_id: str
+    annee_academique: str
+    label: Optional[str]
+
+
+class ApprenticeDocumentsResponse(BaseModel):
+    promotion: PromotionSummaryModel
+    semesters: List[SemesterDocumentsModel]
+    categories: List[DocumentDefinitionModel]
+
+
+class DocumentUploadResponse(BaseModel):
+    document: JournalDocumentModel
+
+
+class DocumentCommentRequest(BaseModel):
+    author_id: str
+    author_name: str
+    author_role: str
+    content: str

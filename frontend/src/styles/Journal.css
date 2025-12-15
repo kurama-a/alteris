@@ -319,6 +319,21 @@ body{
   grid-template-columns:repeat(2,minmax(0,1fr));
   gap:18px;
 }
+.documents-semester{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  margin-bottom:24px;
+}
+.documents-semester:last-of-type{
+  margin-bottom:0;
+}
+.documents-semester-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+}
 .documents-card{
   border:1px dashed var(--border);
   border-radius:12px;
@@ -347,6 +362,15 @@ body{
   position:relative;
   display:inline-flex;
   align-items:center;
+  cursor:pointer;
+}
+.inline-upload{
+  display:inline-flex;
+}
+.inline-upload input{
+  position:absolute;
+  inset:0;
+  opacity:0;
   cursor:pointer;
 }
 .documents-upload input{
@@ -429,6 +453,67 @@ body{
   margin-top:16px;
   font-size:12px;
   color:var(--text);
+}
+
+.documents-comments{
+  margin-top:12px;
+  border-top:1px solid var(--border);
+  padding-top:10px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.documents-comments h4{
+  margin:0;
+  font-size:14px;
+  color:var(--text-strong);
+}
+.documents-comments-list{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.documents-comments-list li{
+  background:#f8fafc;
+  border:1px solid #e5e7eb;
+  border-radius:10px;
+  padding:10px;
+}
+.comment-header{
+  display:flex;
+  justify-content:space-between;
+  gap:6px;
+  font-size:12px;
+  color:#475569;
+}
+.documents-comment-form{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.documents-comment-form textarea{
+  border:1px solid #cbd5f5;
+  border-radius:8px;
+  padding:8px;
+  font-family:inherit;
+  resize:vertical;
+}
+.documents-comment-form button{
+  align-self:flex-end;
+  background:#2563eb;
+  color:#fff;
+  border:none;
+  border-radius:8px;
+  padding:8px 14px;
+  font-weight:600;
+  cursor:pointer;
+}
+.documents-comment-form button:disabled{
+  opacity:0.7;
+  cursor:not-allowed;
 }
 
 /* Responsive */

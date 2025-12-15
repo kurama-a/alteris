@@ -1,4 +1,16 @@
 import React from "react";
+import {
+  fetchApprenticeDocuments,
+  uploadApprenticeDocument,
+  updateApprenticeDocument,
+  addDocumentComment,
+  buildDownloadUrl,
+  type ApprenticeDocumentsResponse,
+  type JournalDocumentRecord,
+  type DocumentComment,
+  type DocumentUploadPayload,
+  type DocumentCommentPayload,
+} from "../api/documents";
 
 export type DocumentCategory =
   | "presentation"
@@ -48,117 +60,46 @@ export const DOCUMENT_DEFINITIONS: DocumentDefinition[] = [
   },
 ];
 
-export type StoredDocument = {
-  id: string;
-  apprenticeId: string;
-  apprenticeName: string;
-  category: DocumentCategory;
-  fileName: string;
-  fileSize: number;
-  fileType: string;
-  uploadedAt: string;
-  uploaderId: string;
-  downloadUrl: string;
+export type StoredDocument = JournalDocumentRecord;
+
+export type DocumentsContextValue = {
+  fetchApprenticeDocuments: (
+    apprenticeId: string,
+    token?: string
+  ) => Promise<ApprenticeDocumentsResponse>;
+  uploadApprenticeDocument: (
+    input: DocumentUploadPayload,
+    token?: string
+  ) => Promise<JournalDocumentRecord>;
+  updateApprenticeDocument: (
+    apprenticeId: string,
+    documentId: string,
+    file: File,
+    token?: string
+  ) => Promise<JournalDocumentRecord>;
+  addDocumentComment: (payload: DocumentCommentPayload, token?: string) => Promise<DocumentComment>;
+  getDownloadUrl: (documentId: string) => string;
 };
 
-type DocumentsContextValue = {
-  documents: StoredDocument[];
-  addDocument: (input: {
-    apprenticeId: string;
-    apprenticeName: string;
-    category: DocumentCategory;
-    file: File;
-    uploaderId: string;
-  }) => { ok: true } | { ok: false; error: string };
-  removeDocument: (id: string) => void;
-};
-
-const DocumentsContext = React.createContext<DocumentsContextValue | undefined>(undefined);
-
-function fileMatchesExtensions(file: File, extensions: string[]) {
-  const lowerName = file.name.toLowerCase();
-  return extensions.some((extension) => lowerName.endsWith(extension));
-}
+const documentsContext = React.createContext<DocumentsContextValue | undefined>(undefined);
 
 export function DocumentsProvider({ children }: { children: React.ReactNode }) {
-  const [documents, setDocuments] = React.useState<StoredDocument[]>([]);
-
-  const documentsRef = React.useRef<StoredDocument[]>([]);
-
-  React.useEffect(() => {
-    documentsRef.current = documents;
-  }, [documents]);
-
-  const addDocument = React.useCallback<DocumentsContextValue["addDocument"]>(
-    ({ apprenticeId, apprenticeName, category, file, uploaderId }) => {
-      const definition = DOCUMENT_DEFINITIONS.find((candidate) => candidate.id === category);
-      if (!definition) {
-        return { ok: false, error: "Type de document inconnu." };
-      }
-
-      if (!fileMatchesExtensions(file, definition.extensions)) {
-        return {
-          ok: false,
-          error: `Le fichier "${file.name}" n'est pas au format attendu (${definition.extensions.join(
-            ", "
-          )}).`,
-        };
-      }
-
-      const downloadUrl = URL.createObjectURL(file);
-      const record: StoredDocument = {
-        id: `${category}-${apprenticeId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        apprenticeId,
-        apprenticeName,
-        category,
-        fileName: file.name,
-        fileSize: file.size,
-        fileType: file.type,
-        uploadedAt: new Date().toISOString(),
-        uploaderId,
-        downloadUrl,
-      };
-
-      setDocuments((current) => [...current, record]);
-      return { ok: true };
-    },
-    []
-  );
-
-  const removeDocument = React.useCallback<DocumentsContextValue["removeDocument"]>((id) => {
-    setDocuments((current) => {
-      const next = current.filter((doc) => doc.id !== id);
-      const removed = current.find((doc) => doc.id === id);
-      if (removed) {
-        URL.revokeObjectURL(removed.downloadUrl);
-      }
-      return next;
-    });
-  }, []);
-
-  React.useEffect(
-    () => () => {
-      documentsRef.current.forEach((doc) => {
-        URL.revokeObjectURL(doc.downloadUrl);
-      });
-    },
-    []
-  );
-
   const value = React.useMemo<DocumentsContextValue>(
     () => ({
-      documents,
-      addDocument,
-      removeDocument,
+      fetchApprenticeDocuments,
+      uploadApprenticeDocument,
+      updateApprenticeDocument,
+      addDocumentComment,
+      getDownloadUrl: buildDownloadUrl,
     }),
-    [documents, addDocument, removeDocument]
+    []
   );
 
-  return <DocumentsContext.Provider value={value}>{children}</DocumentsContext.Provider>;
+  return <documentsContext.Provider value={value}>{children}</documentsContext.Provider>;
 }
 
 export function useDocuments(): DocumentsContextValue {
-  const context = React.useContext(DocumentsContext);
+  const context = React.useContext(documentsContext);
   if (!context) {
     throw new Error("Documents context is not available.");
   }

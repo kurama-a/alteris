@@ -7,8 +7,8 @@ import {
   useDocuments,
   DOCUMENT_DEFINITIONS,
   type DocumentCategory,
-  type StoredDocument,
 } from "../documents/DocumentsContext";
+import type { ApprenticeDocumentsResponse } from "../api/documents";
 import "../styles/journal.css";
 
 type TutorCardProps = {
@@ -25,12 +25,25 @@ type AdminApprentisResponse = {
   apprentis: JournalSelectableApprentice[];
 };
 
+const COMMENT_ROLES = new Set([
+  "tuteur",
+  "tuteur_pedagogique",
+  "maitre",
+  "maitre_apprentissage",
+]);
+
 const GLOBAL_JOURNAL_ROLES = new Set(["admin", "administrateur", "coordinatrice", "responsable_cursus"]);
 
 export default function Journal() {
   const me = useMe();
   const { token } = useAuth();
-  const { documents, addDocument, removeDocument } = useDocuments();
+  const {
+    fetchApprenticeDocuments: fetchDocumentsApi,
+    uploadApprenticeDocument: uploadDocumentApi,
+    updateApprenticeDocument: updateDocumentApi,
+    addDocumentComment: addCommentApi,
+    getDownloadUrl,
+  } = useDocuments();
   const [remoteJournals, setRemoteJournals] = React.useState<Record<string, ApprenticeJournal>>({});
   const [loadingJournalId, setLoadingJournalId] = React.useState<string | null>(null);
   const [journalError, setJournalError] = React.useState<string | null>(null);
@@ -51,6 +64,12 @@ export default function Journal() {
     }
     return Array.from(values);
   }, [me.role, me.roles]);
+
+  const normalizedLowercaseRoles = React.useMemo(() => {
+    const lower = new Set<string>();
+    normalizedRoles.forEach((role) => lower.add(role.toLowerCase()));
+    return lower;
+  }, [normalizedRoles]);
   const canBrowseAllJournals = React.useMemo(
     () => normalizedRoles.some((role) => GLOBAL_JOURNAL_ROLES.has(role)),
     [normalizedRoles]
@@ -83,6 +102,11 @@ export default function Journal() {
     }
     return Array.from(map.values());
   }, [me.apprentices, ownJournal]);
+
+  const canCommentDocuments = React.useMemo(
+    () => Array.from(normalizedLowercaseRoles).some((role) => COMMENT_ROLES.has(role)),
+    [normalizedLowercaseRoles]
+  );
 
   React.useEffect(() => {
     if (!canBrowseAllJournals || !token) {
@@ -150,6 +174,12 @@ export default function Journal() {
   }, [accessibleSummaries, globalApprentices]);
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [documentsData, setDocumentsData] = React.useState<ApprenticeDocumentsResponse | null>(null);
+  const [isLoadingDocuments, setIsLoadingDocuments] = React.useState(false);
+  const [documentsError, setDocumentsError] = React.useState<string | null>(null);
+  const [uploadingDocumentKey, setUploadingDocumentKey] = React.useState<string | null>(null);
+  const [commentInputs, setCommentInputs] = React.useState<Record<string, string>>({});
+  const [commentBusyMap, setCommentBusyMap] = React.useState<Record<string, boolean>>({});
 
   React.useEffect(() => {
     if (selectableApprentices.length === 0) {
@@ -176,6 +206,143 @@ export default function Journal() {
       setSelectedId(selectableApprentices[0].id);
     }
   }, [selectableApprentices, selectedId, ownJournal, me.id, canBrowseAllJournals]);
+
+  const loadDocuments = React.useCallback(async () => {
+    if (!token || !selectedId) {
+      setDocumentsData(null);
+      setDocumentsError(null);
+      return;
+    }
+    setIsLoadingDocuments(true);
+    setDocumentsError(null);
+    try {
+      const payload = await fetchDocumentsApi(selectedId, token);
+      setDocumentsData(payload);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Impossible de charger les documents.";
+      setDocumentsData(null);
+      setDocumentsError(message);
+    } finally {
+      setIsLoadingDocuments(false);
+    }
+  }, [fetchDocumentsApi, selectedId, token]);
+
+  React.useEffect(() => {
+    loadDocuments();
+  }, [loadDocuments]);
+
+  const uploaderName = React.useMemo(() => {
+    return me.fullName || `${me.firstName ?? ""} ${me.lastName ?? ""}`.trim() || me.email || me.id;
+  }, [me.fullName, me.firstName, me.lastName, me.email, me.id]);
+
+  const handleUploadForSemester = React.useCallback(
+    async (semesterId: string, category: DocumentCategory, file: File) => {
+      if (!selectedId || !token) return;
+      const key = `${semesterId}-${category}`;
+      setUploadingDocumentKey(key);
+      setDocumentsError(null);
+      try {
+        await uploadDocumentApi(
+          {
+            apprenticeId: selectedId,
+            semesterId,
+            category,
+            file,
+            uploaderId: me.id,
+            uploaderName,
+            uploaderRole: me.role ?? "apprenti",
+          },
+          token
+        );
+        await loadDocuments();
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Le depot du document a echoue.";
+        setDocumentsError(message);
+      } finally {
+        setUploadingDocumentKey(null);
+      }
+    },
+    [loadDocuments, me.id, me.role, selectedId, token, uploadDocumentApi, uploaderName]
+  );
+
+  const handleReplaceDocument = React.useCallback(
+    async (documentId: string, semesterId: string, category: DocumentCategory, file: File) => {
+      if (!selectedId || !token) return;
+      const key = `${semesterId}-${category}`;
+      setUploadingDocumentKey(key);
+      setDocumentsError(null);
+      try {
+        await updateDocumentApi(selectedId, documentId, file, token);
+        await loadDocuments();
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "La mise a jour du document a echoue.";
+        setDocumentsError(message);
+      } finally {
+        setUploadingDocumentKey(null);
+      }
+    },
+    [loadDocuments, selectedId, token, updateDocumentApi]
+  );
+
+  const handleCommentChange = React.useCallback((documentId: string, value: string) => {
+    setCommentInputs((current) => ({ ...current, [documentId]: value }));
+  }, []);
+
+  const handleCommentSubmit = React.useCallback(
+    async (documentId: string) => {
+      if (!selectedId || !token) return;
+      const message = (commentInputs[documentId] || "").trim();
+      if (!message) {
+        return;
+      }
+      setCommentBusyMap((current) => ({ ...current, [documentId]: true }));
+      setDocumentsError(null);
+      try {
+        await addCommentApi(
+          {
+            apprenticeId: selectedId,
+            documentId,
+            authorId: me.id,
+            authorName: uploaderName,
+            authorRole: me.role ?? "apprenti",
+            content: message,
+          },
+          token
+        );
+        setCommentInputs((current) => ({ ...current, [documentId]: "" }));
+        await loadDocuments();
+      } catch (error) {
+        const errMessage =
+          error instanceof Error ? error.message : "Impossible d'ajouter le commentaire.";
+        setDocumentsError(errMessage);
+      } finally {
+        setCommentBusyMap((current) => ({ ...current, [documentId]: false }));
+      }
+    },
+    [addCommentApi, commentInputs, loadDocuments, me.id, me.role, selectedId, token, uploaderName]
+  );
+
+  const handleFileInputChange = React.useCallback(
+    (
+      semesterId: string,
+      category: DocumentCategory,
+      mode: "create" | "update",
+      documentId?: string
+    ) => async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+      if (mode === "update" && documentId) {
+        await handleReplaceDocument(documentId, semesterId, category, file);
+      } else {
+        await handleUploadForSemester(semesterId, category, file);
+      }
+    },
+    [handleReplaceDocument, handleUploadForSemester]
+  );
 
   const remoteJournalForSelection = selectedId ? remoteJournals[selectedId] : null;
 
@@ -249,76 +416,11 @@ export default function Journal() {
 
   const activeId = activeJournal?.id ?? selectedId ?? me.id ?? "";
 
-  const documentsForActive = React.useMemo<StoredDocument[]>(
-    () => documents.filter((doc) => doc.apprenticeId === activeId),
-    [documents, activeId]
-  );
-
-  const [errors, setErrors] = React.useState<Partial<Record<DocumentCategory, string>>>({});
-
-  const handleUpload = React.useCallback(
-    async (category: DocumentCategory, files: FileList | null) => {
-      if (!files || files.length === 0 || !activeJournal) return;
-      const file = files[0];
-      const result = addDocument({
-        apprenticeId: activeJournal.id,
-        apprenticeName: activeJournal.fullName,
-        category,
-        file,
-        uploaderId: me.id,
-      });
-      if (!result.ok) {
-        setErrors((current) => ({ ...current, [category]: result.error }));
-        return;
-      }
-      setErrors((current) => ({ ...current, [category]: undefined }));
-    },
-    [addDocument, activeJournal, me.id]
-  );
-
-  const handleRemove = React.useCallback(
-    (documentId: string) => {
-      removeDocument(documentId);
-    },
-    [removeDocument]
-  );
-
-  const renderDocumentsForCategory = React.useCallback(
-    (category: DocumentCategory) => {
-      const records = documentsForActive.filter((doc) => doc.category === category);
-      if (records.length === 0) {
-        return <p className="documents-empty">Aucun document depose pour le moment.</p>;
-      }
-      return (
-        <ul className="documents-list">
-          {records.map((doc) => (
-            <li key={doc.id} className="documents-item">
-              <div className="documents-item-info">
-                <span className="documents-item-name">{doc.fileName}</span>
-                <span className="documents-item-meta">
-                  Televerse le {new Date(doc.uploadedAt).toLocaleString("fr-FR")} a {" \n                    "}
-                  {(doc.fileSize / 1024).toFixed(1)} Ko
-                </span>
-              </div>
-              <div className="documents-item-actions">
-                <a href={doc.downloadUrl} download={doc.fileName} className="documents-link">
-                  Telecharger
-                </a>
-                <button
-                  type="button"
-                  className="documents-delete"
-                  onClick={() => handleRemove(doc.id)}
-                >
-                  Supprimer
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      );
-    },
-    [documentsForActive, handleRemove]
-  );
+  const documentsSemesters = documentsData?.semesters ?? [];
+  const documentCategories = documentsData?.categories ?? DOCUMENT_DEFINITIONS;
+  const promotionLabel = documentsData?.promotion
+    ? documentsData.promotion.label || documentsData.promotion.annee_academique
+    : null;
 
   const heroImage =
     activeJournal?.journalHeroImageUrl ??
@@ -461,7 +563,6 @@ export default function Journal() {
               <div>
                 <div className="name-row">
                   <h2 className="name">{fullName}</h2>
-                  <span className="age">({profile.age} ans)</span>
                 </div>
                 <div className="role">{profile.position}</div>
                 <div className="contact-row">
@@ -510,38 +611,150 @@ export default function Journal() {
       </section>
 
       <section className="content documents-section">
-        <h2 className="documents-title">Documents déposés</h2>
+        <h2 className="documents-title">Documents de suivi</h2>
         <p className="documents-intro">
           Déposez ici les livrables de {fullName}. Les formats acceptés varient selon le type de
-          document.
+          document et chaque semestre dispose des mêmes exigences.
         </p>
-        <div className="documents-grid">
-          {DOCUMENT_DEFINITIONS.map((definition) => (
-            <article key={definition.id} className="documents-card">
-              <header className="documents-card-header">
-                <h3 className="documents-card-title">{definition.label}</h3>
-                <p className="documents-card-desc">{definition.description}</p>
+        {promotionLabel ? (
+          <p className="documents-promotion-label">
+            Promotion suivie : <strong>{promotionLabel}</strong>
+          </p>
+        ) : null}
+        {documentsError && <p className="documents-error">{documentsError}</p>}
+        {isLoadingDocuments ? (
+          <p>Chargement des documents...</p>
+        ) : documentsSemesters.length === 0 ? (
+          <p>Aucun semestre n&apos;a encore été configuré pour cette promotion.</p>
+        ) : (
+          documentsSemesters.map((semester) => (
+            <article key={semester.semester_id} className="documents-semester">
+              <header className="documents-semester-header">
+                <div>
+                  <h3>{semester.name}</h3>
+                  <p>Livrables attendus : {documentCategories.length}</p>
+                </div>
               </header>
-              <label className="documents-upload">
-                <span className="documents-upload-button">Choisir un fichier</span>
-                <input
-                  type="file"
-                  accept={definition.accept}
-                  onChange={(event) => handleUpload(definition.id, event.target.files)}
-                />
-              </label>
-              {errors[definition.id] ? (
-                <p className="documents-error">{errors[definition.id]}</p>
-              ) : null}
-              <div className="documents-list-wrapper">
-                {renderDocumentsForCategory(definition.id)}
+              <div className="documents-grid">
+                {documentCategories.map((definition) => {
+                  const record = semester.documents.find(
+                    (doc) => doc.category === definition.id
+                  );
+                  const uploadKey = `${semester.semester_id}-${definition.id}`;
+                  const isUploading = uploadingDocumentKey === uploadKey;
+                  return (
+                    <article key={`${semester.semester_id}-${definition.id}`} className="documents-card">
+                      <header className="documents-card-header">
+                        <h3 className="documents-card-title">{definition.label}</h3>
+                        <p className="documents-card-desc">{definition.description}</p>
+                      </header>
+                      {record ? (
+                        <>
+                          <div className="documents-item-info">
+                            <span className="documents-item-name">{record.file_name}</span>
+                            <span className="documents-item-meta">
+                              Déposé le{" "}
+                              {new Date(record.uploaded_at).toLocaleString("fr-FR", {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              })}{" "}
+                              par {record.uploader_name} • {(record.file_size / 1024).toFixed(1)} Ko
+                            </span>
+                          </div>
+                          <div className="documents-item-actions">
+                            <a
+                              href={getDownloadUrl(record.id)}
+                              className="documents-link"
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Télécharger
+                            </a>
+                            <label className="documents-upload inline-upload">
+                              <span className="documents-upload-button">
+                                {isUploading ? "Import..." : "Remplacer"}
+                              </span>
+                              <input
+                                type="file"
+                                accept={definition.accept}
+                                onChange={handleFileInputChange(
+                                  semester.semester_id,
+                                  definition.id,
+                                  "update",
+                                  record.id
+                                )}
+                              />
+                            </label>
+                          </div>
+                          <div className="documents-comments">
+                            <h4>Commentaires</h4>
+                            {record.comments.length === 0 ? (
+                              <p className="documents-empty">Pas encore de commentaires.</p>
+                            ) : (
+                              <ul className="documents-comments-list">
+                                {record.comments.map((comment) => (
+                                  <li key={comment.comment_id}>
+                                    <div className="comment-header">
+                                      <strong>{comment.author_name}</strong>
+                                      <span>
+                                        {new Date(comment.created_at).toLocaleString("fr-FR", {
+                                          dateStyle: "short",
+                                          timeStyle: "short",
+                                        })}
+                                      </span>
+                                    </div>
+                                    <p>{comment.content}</p>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            {canCommentDocuments ? (
+                              <div className="documents-comment-form">
+                                <textarea
+                                  rows={2}
+                                  value={commentInputs[record.id] ?? ""}
+                                  onChange={(event) =>
+                                    handleCommentChange(record.id, event.target.value)
+                                  }
+                                  placeholder="Ajoutez une remarque pour guider l'apprenti"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={commentBusyMap[record.id]}
+                                  onClick={() => handleCommentSubmit(record.id)}
+                                >
+                                  {commentBusyMap[record.id] ? "Envoi..." : "Publier"}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        </>
+                      ) : (
+                        <label className="documents-upload">
+                          <span className="documents-upload-button">
+                            {isUploading ? "Import..." : "Déposer un fichier"}
+                          </span>
+                          <input
+                            type="file"
+                            accept={definition.accept}
+                            onChange={handleFileInputChange(
+                              semester.semester_id,
+                              definition.id,
+                              "create"
+                            )}
+                          />
+                        </label>
+                      )}
+                    </article>
+                  );
+                })}
               </div>
             </article>
-          ))}
-        </div>
+          ))
+        )}
         <p className="documents-note">
-          La présentation et le rapport sont automatiquement partagés avec les membres du jury
-          (professeurs et intervenants), en plus de rester visibles dans ce journal.
+          La présentation et le rapport restent visibles pour les jurys et les coordinateurs, tandis
+          que les tuteurs et maîtres peuvent commenter chaque dépôt pour guider l&apos;apprenti.
         </p>
       </section>
     </div>

@@ -1,9 +1,54 @@
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from bson import ObjectId
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from urllib.parse import quote_plus
 import common.db as database
 from datetime import datetime
+from pathlib import Path
+import shutil
+
+DOCUMENT_DEFINITIONS = [
+    {
+        "id": "presentation",
+        "label": "Presentation",
+        "description": "Fichiers PDF ou PowerPoint",
+        "accept": ".pdf,.ppt,.pptx",
+        "extensions": [".pdf", ".ppt", ".pptx"],
+    },
+    {
+        "id": "fiche-synthese",
+        "label": "Fiche synthese",
+        "description": "Format PDF uniquement",
+        "accept": ".pdf",
+        "extensions": [".pdf"],
+    },
+    {
+        "id": "rapport",
+        "label": "Rapport",
+        "description": "Documents Word (.doc, .docx)",
+        "accept": ".doc,.docx",
+        "extensions": [".doc", ".docx"],
+    },
+    {
+        "id": "notes-mensuelles",
+        "label": "Notes mensuelles",
+        "description": "Notes mensuelles au format PDF",
+        "accept": ".pdf",
+        "extensions": [".pdf"],
+    },
+]
+
+DOCUMENT_COLLECTION_NAME = "journal_documents"
+DOCUMENT_STORAGE = Path(__file__).resolve().parent / "storage" / "journal_documents"
+COMMENTER_ROLES = {
+    "tuteur",
+    "tuteur_pedagogique",
+    "maitre",
+    "maitre_apprentissage",
+}
+
+def _ensure_storage():
+    DOCUMENT_STORAGE.mkdir(parents=True, exist_ok=True)
 
 ROLES_VALIDES = [
     "apprenti",
@@ -306,4 +351,275 @@ async def supprimer_entretien(apprenti_id: str, entretien_id: str):
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur lors de la suppression : {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Erreur lors de la suppression : {str(e)}")
+
+
+def _documents_collection():
+    if database.db is None:
+        raise HTTPException(status_code=500, detail="Connexion DB absente")
+    return database.db[DOCUMENT_COLLECTION_NAME]
+
+
+def _promotion_collection():
+    if database.db is None:
+        raise HTTPException(status_code=500, detail="Connexion DB absente")
+    return database.db["promos"]
+
+
+def _allowed_extensions(category: str) -> List[str]:
+    for definition in DOCUMENT_DEFINITIONS:
+        if definition["id"] == category:
+            return definition["extensions"]
+    raise HTTPException(status_code=400, detail="Categorie de document inconnue")
+
+
+async def _retrieve_apprenti_and_promotion(apprenti_id: str):
+    apprenti_collection = get_collection("apprenti")
+    apprenti = await apprenti_collection.find_one({"_id": ObjectId(apprenti_id)})
+    if not apprenti:
+        raise HTTPException(status_code=404, detail="Apprenti introuvable")
+    promotion_year = apprenti.get("annee_academique")
+    if not promotion_year:
+        raise HTTPException(status_code=400, detail="Aucune promotion associee a cet apprenti")
+    promotion = await _promotion_collection().find_one({"annee_academique": promotion_year})
+    if not promotion:
+        raise HTTPException(status_code=404, detail="Promotion introuvable pour l'apprenti")
+    if not promotion.get("semesters"):
+        raise HTTPException(status_code=400, detail="La promotion ne contient aucun semestre configure")
+    return apprenti, promotion
+
+
+def _normalize_semester_id(raw: Any) -> str:
+    return str(raw) if raw is not None else ""
+
+
+def _serialize_document(document: Dict[str, Any]) -> Dict[str, Any]:
+    doc_id = str(document["_id"])
+    comments = [
+        {
+            "comment_id": comment.get("comment_id"),
+            "author_id": comment.get("author_id"),
+            "author_name": comment.get("author_name"),
+            "author_role": comment.get("author_role"),
+            "content": comment.get("content"),
+            "created_at": comment.get("created_at"),
+        }
+        for comment in document.get("comments", [])
+    ]
+    return {
+        "id": doc_id,
+        "semester_id": document.get("semester_id"),
+        "category": document.get("category"),
+        "file_name": document.get("file_name"),
+        "file_size": document.get("file_size"),
+        "file_type": document.get("file_type"),
+        "uploaded_at": document.get("uploaded_at"),
+        "uploader_id": document.get("uploader", {}).get("id"),
+        "uploader_name": document.get("uploader", {}).get("name"),
+        "uploader_role": document.get("uploader", {}).get("role"),
+        "download_url": f"/apprenti/documents/{doc_id}/download",
+        "comments": comments,
+    }
+
+
+async def list_journal_documents(apprenti_id: str) -> Dict[str, Any]:
+    _, promotion = await _retrieve_apprenti_and_promotion(apprenti_id)
+    collection = _documents_collection()
+    documents = await collection.find({"apprentice_id": apprenti_id}).to_list(length=None)
+    documents_by_semester: Dict[str, List[Dict[str, Any]]] = {}
+    for document in documents:
+        semester_id = document.get("semester_id")
+        documents_by_semester.setdefault(semester_id, []).append(_serialize_document(document))
+
+    semesters_payload = []
+    for semester in sorted(promotion.get("semesters", []), key=lambda entry: entry.get("order", 0)):
+        semester_id = _normalize_semester_id(semester.get("semester_id") or semester.get("id"))
+        if not semester_id:
+            continue
+        semesters_payload.append(
+            {
+                "semester_id": semester_id,
+                "name": semester.get("name") or semester_id,
+                "documents": documents_by_semester.get(semester_id, []),
+            }
+        )
+
+    promotion_summary = {
+        "promotion_id": str(promotion["_id"]),
+        "annee_academique": promotion.get("annee_academique"),
+        "label": promotion.get("label"),
+    }
+    categories = [
+        {
+            "id": definition["id"],
+            "label": definition["label"],
+            "description": definition["description"],
+            "accept": definition["accept"],
+        }
+        for definition in DOCUMENT_DEFINITIONS
+    ]
+    return {
+        "promotion": promotion_summary,
+        "semesters": semesters_payload,
+        "categories": categories,
+    }
+
+
+def _resolve_semester(promotion: Dict[str, Any], semester_id: str) -> Dict[str, Any]:
+    for semester in promotion.get("semesters", []):
+        current_id = _normalize_semester_id(semester.get("semester_id") or semester.get("id"))
+        if current_id == semester_id:
+            return semester
+    raise HTTPException(status_code=404, detail="Semestre introuvable pour cette promotion")
+
+
+def _build_storage_path(promotion_id: str, semester_id: str, document_id: str, extension: str) -> Path:
+    _ensure_storage()
+    target_dir = DOCUMENT_STORAGE / promotion_id / semester_id
+    target_dir.mkdir(parents=True, exist_ok=True)
+    return target_dir / f"{document_id}{extension}"
+
+
+async def create_journal_document(
+    apprenti_id: str,
+    *,
+    category: str,
+    semester_id: str,
+    uploader_id: str,
+    uploader_name: str,
+    uploader_role: str,
+    upload: UploadFile,
+) -> Dict[str, Any]:
+    apprenti, promotion = await _retrieve_apprenti_and_promotion(apprenti_id)
+    semester_id = semester_id.strip()
+    if not semester_id:
+        raise HTTPException(status_code=400, detail="Semestre requis")
+    _resolve_semester(promotion, semester_id)
+
+    allowed_extensions = _allowed_extensions(category)
+    original_name = upload.filename or "document"
+    extension = Path(original_name).suffix.lower()
+    if extension not in allowed_extensions:
+        raise HTTPException(status_code=400, detail="Extension de fichier non autorisee pour ce type")
+
+    document_id = ObjectId()
+    promotion_id = str(promotion["_id"])
+    file_path = _build_storage_path(promotion_id, semester_id, str(document_id), extension)
+    with file_path.open("wb") as buffer:
+        shutil.copyfileobj(upload.file, buffer)
+
+    document_record = {
+        "_id": document_id,
+        "apprentice_id": apprenti_id,
+        "apprentice_name": _build_full_name(apprenti),
+        "promotion_id": promotion_id,
+        "semester_id": semester_id,
+        "category": category,
+        "file_name": original_name,
+        "file_size": file_path.stat().st_size,
+        "file_type": upload.content_type or "application/octet-stream",
+        "file_path": str(file_path.relative_to(DOCUMENT_STORAGE)),
+        "uploaded_at": datetime.utcnow(),
+        "uploader": {
+            "id": uploader_id,
+            "name": uploader_name,
+            "role": uploader_role,
+        },
+        "comments": [],
+    }
+    await _documents_collection().insert_one(document_record)
+    return _serialize_document(document_record)
+
+
+async def update_journal_document(
+    apprenti_id: str,
+    document_id: str,
+    upload: UploadFile,
+) -> Dict[str, Any]:
+    documents_collection = _documents_collection()
+    document = await documents_collection.find_one({"_id": ObjectId(document_id)})
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    if document.get("apprentice_id") != apprenti_id:
+        raise HTTPException(status_code=403, detail="Document non associe a cet apprenti")
+
+    allowed_extensions = _allowed_extensions(document.get("category"))
+    original_name = upload.filename or document.get("file_name") or "document"
+    extension = Path(original_name).suffix.lower()
+    if extension not in allowed_extensions:
+        raise HTTPException(status_code=400, detail="Extension de fichier non autorisee pour ce type")
+
+    promotion_id = document.get("promotion_id")
+    semester_id = document.get("semester_id")
+    file_path = _build_storage_path(promotion_id, semester_id, document_id, extension)
+
+    with file_path.open("wb") as buffer:
+        shutil.copyfileobj(upload.file, buffer)
+
+    # Supprime l'ancien fichier si le chemin change
+    previous_relative_path = document.get("file_path")
+    if previous_relative_path:
+        old_path = DOCUMENT_STORAGE / previous_relative_path
+        if old_path.exists() and old_path != file_path:
+            old_path.unlink(missing_ok=True)
+
+    updates = {
+        "file_name": original_name,
+        "file_size": file_path.stat().st_size,
+        "file_type": upload.content_type or document.get("file_type"),
+        "file_path": str(file_path.relative_to(DOCUMENT_STORAGE)),
+        "uploaded_at": datetime.utcnow(),
+    }
+    await documents_collection.update_one({"_id": document["_id"]}, {"$set": updates})
+    document.update(updates)
+    return _serialize_document(document)
+
+
+async def add_document_comment(
+    apprenti_id: str,
+    document_id: str,
+    *,
+    author_id: str,
+    author_name: str,
+    author_role: str,
+    content: str,
+) -> Dict[str, Any]:
+    document = await _documents_collection().find_one({"_id": ObjectId(document_id)})
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    if document.get("apprentice_id") != apprenti_id:
+        raise HTTPException(status_code=403, detail="Document non associe a cet apprenti")
+
+    normalized_role = author_role.lower()
+    if normalized_role not in COMMENTER_ROLES:
+        raise HTTPException(status_code=403, detail="Ce role ne peut pas commenter les documents")
+    message = content.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Commentaire vide")
+
+    comment = {
+        "comment_id": str(ObjectId()),
+        "author_id": author_id,
+        "author_name": author_name,
+        "author_role": author_role,
+        "content": message,
+        "created_at": datetime.utcnow(),
+    }
+    await _documents_collection().update_one(
+        {"_id": document["_id"]},
+        {"$push": {"comments": comment}},
+    )
+    return comment
+
+
+async def get_document_file(document_id: str) -> tuple[Path, str, str]:
+    document = await _documents_collection().find_one({"_id": ObjectId(document_id)})
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    relative_path = document.get("file_path")
+    if not relative_path:
+        raise HTTPException(status_code=500, detail="Chemin du document invalide")
+    file_path = DOCUMENT_STORAGE / relative_path
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Fichier introuvable sur le serveur")
+    return file_path, document.get("file_name") or file_path.name, document.get("file_type") or "application/octet-stream"

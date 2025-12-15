@@ -127,7 +127,7 @@ function formatMember(member: JuryMemberDetails): string {
 export default function Juries() {
   const { token } = useAuth();
   const me = useMe();
-  const { documents } = useDocuments();
+  const { fetchApprenticeDocuments: fetchDocumentsApi, getDownloadUrl } = useDocuments();
 
   const [juries, setJuries] = React.useState<JuryRecord[]>([]);
   const [isLoadingJuries, setIsLoadingJuries] = React.useState(false);
@@ -170,26 +170,6 @@ export default function Juries() {
 
   const canAccessPage = isJuryMember || isApprentice || canManageJuries;
 
-  const groupedDocuments = React.useMemo(() => {
-    const map = new Map<
-      string,
-      { apprenticeId: string; apprenticeName: string; docs: StoredDocument[] }
-    >();
-    documents
-      .filter((doc) => JURY_CATEGORIES.has(doc.category))
-      .forEach((doc) => {
-        if (!map.has(doc.apprenticeId)) {
-          map.set(doc.apprenticeId, {
-            apprenticeId: doc.apprenticeId,
-            apprenticeName: doc.apprenticeName,
-            docs: [],
-          });
-        }
-        map.get(doc.apprenticeId)!.docs.push(doc);
-      });
-    return Array.from(map.values());
-  }, [documents]);
-
   const accessibleJuries = React.useMemo(() => {
     if (canManageJuries) return juries;
     const userId = me.id;
@@ -206,6 +186,73 @@ export default function Juries() {
     }
     return accessibleJuries;
   }, [accessibleJuries, canManageJuries, selectedApprenticeId]);
+
+  const [juryDocumentsMap, setJuryDocumentsMap] = React.useState<
+    Record<string, StoredDocument[]>
+  >({});
+  const [isLoadingJuryDocs, setIsLoadingJuryDocs] = React.useState(false);
+  const [juryDocsError, setJuryDocsError] = React.useState<string | null>(null);
+
+  const loadJuryDocuments = React.useCallback(async () => {
+    if (!token || !canAccessPage) {
+      setJuryDocumentsMap({});
+      return;
+    }
+    const apprenticeIds = Array.from(
+      new Set(juriesToDisplay.map((jury) => jury.members.apprenti.user_id))
+    ).filter(Boolean);
+    if (apprenticeIds.length === 0) {
+      setJuryDocumentsMap({});
+      return;
+    }
+    setIsLoadingJuryDocs(true);
+    setJuryDocsError(null);
+    try {
+      const resultEntries: [string, StoredDocument[]][] = [];
+      for (const apprenticeId of apprenticeIds) {
+        try {
+          const payload = await fetchDocumentsApi(apprenticeId, token);
+          const docs = payload.semesters.flatMap((semester) =>
+            semester.documents.filter((doc) => JURY_CATEGORIES.has(doc.category as DocumentCategory))
+          );
+          resultEntries.push([apprenticeId, docs]);
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Impossible de charger certains documents de jury.";
+          setJuryDocsError(message);
+        }
+      }
+      setJuryDocumentsMap(Object.fromEntries(resultEntries));
+    } finally {
+      setIsLoadingJuryDocs(false);
+    }
+  }, [canAccessPage, fetchDocumentsApi, juriesToDisplay, token]);
+
+  React.useEffect(() => {
+    loadJuryDocuments();
+  }, [loadJuryDocuments]);
+
+  const groupedDocuments = React.useMemo(() => {
+    const map = new Map<
+      string,
+      { apprenticeId: string; apprenticeName: string; docs: StoredDocument[] }
+    >();
+    juriesToDisplay.forEach((jury) => {
+      const apprentice = jury.members.apprenti;
+      const docs = juryDocumentsMap[apprentice.user_id];
+      if (!docs || docs.length === 0) {
+        return;
+      }
+      map.set(apprentice.user_id, {
+        apprenticeId: apprentice.user_id,
+        apprenticeName: formatMember(apprentice),
+        docs,
+      });
+    });
+    return Array.from(map.values());
+  }, [juriesToDisplay, juryDocumentsMap]);
 
   const selectedPromotion = React.useMemo(
     () => timelineOptions.find((option) => option.promotion_id === formDraft.promotionId),
@@ -399,7 +446,10 @@ export default function Juries() {
           jury.
         </p>
       </header>
-      {groupedDocuments.length === 0 ? (
+      {juryDocsError && <p style={{ color: "#b91c1c" }}>{juryDocsError}</p>}
+      {isLoadingJuryDocs ? (
+        <p style={{ marginTop: 12 }}>Chargement des documents de jury...</p>
+      ) : groupedDocuments.length === 0 ? (
         <p style={{ marginTop: 12 }}>Aucun document de jury disponible pour le moment.</p>
       ) : (
         <div className="jury-documents" style={{ marginTop: 18 }}>
@@ -412,11 +462,11 @@ export default function Juries() {
               <ul className="jury-documents-list">
                 {group.docs.map((doc) => (
                   <li key={doc.id}>
-                    <a href={doc.downloadUrl} download={doc.fileName}>
-                      {doc.fileName}
+                    <a href={getDownloadUrl(doc.id)} download={doc.file_name}>
+                      {doc.file_name}
                     </a>{" "}
                     - téléversé le{" "}
-                    {new Date(doc.uploadedAt).toLocaleDateString("fr-FR", {
+                    {new Date(doc.uploaded_at).toLocaleDateString("fr-FR", {
                       hour: "2-digit",
                       minute: "2-digit",
                     })}
