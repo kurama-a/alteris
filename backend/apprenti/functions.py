@@ -40,6 +40,87 @@ DOCUMENT_DEFINITIONS = [
 
 DOCUMENT_COLLECTION_NAME = "journal_documents"
 DOCUMENT_STORAGE = Path(__file__).resolve().parent / "storage" / "journal_documents"
+
+COMPETENCY_DEFINITIONS = [
+    {
+        "id": "C1",
+        "title": "C1 Diagnostiquer",
+        "description": [
+            "Diagnostiquer un systeme numerique existant en vue de le faire evoluer",
+            "Diagnostiquer un systeme numerique pour identifier une anomalie",
+            "Diagnostiquer un systeme numerique en vue de corriger ou pallier une anomalie",
+            "Diagnostiquer un systeme numerique en vue de le maintenir durablement en etat de fonctionnement",
+        ],
+    },
+    {
+        "id": "C2",
+        "title": "C2 Concevoir",
+        "description": [
+            "Analyser et construire un cahier des charges",
+            "Concevoir l'architecture fonctionnelle ou structurelle d'un systeme numerique en prenant en compte les contraintes de developpement durable",
+            "Concevoir un systeme numerique en choisissant des technologies adaptees au besoin defini en tenant compte de l'etat de l'art et des moyens de l'entreprise",
+            "Concevoir des systemes numeriques a travers de la modelisation et de la simulation",
+        ],
+    },
+    {
+        "id": "C3",
+        "title": "C3 Produire",
+        "description": [
+            "Produire un prototype de systeme numerique",
+            "Produire un systeme numerique capable de respecter des contraintes reglementaires, techniques, environnementales et de duree de vie",
+        ],
+    },
+    {
+        "id": "C4",
+        "title": "C4 Valider",
+        "description": [
+            "Valider le bon fonctionnement d'un systeme numerique en proposant une demarche visant a identifier l'absence de dysfonctionnement",
+            "Valider l'adequation d'une solution avec le cahier des charges",
+        ],
+    },
+    {
+        "id": "C5",
+        "title": "C5 Piloter",
+        "description": [
+            "Piloter un projet en assurant la projection et le suivi des actions et du budget",
+            "Piloter un projet en manageant une equipe projet pluridisciplinaire et internationale en prenant en compte les aspects techniques humains et economiques",
+        ],
+    },
+    {
+        "id": "C6",
+        "title": "C6 S'adapter",
+        "description": [
+            "S'adapter a de nouvelles methodes techniques ou technologies utiles a la conception de systemes numeriques",
+            "S'adapter a des contraintes organisationnelles environnementales ou humaines",
+            "Anticiper les innovations et evolutions et assurer une veille",
+            "Identifier la necessite de se former sur de nouvelles methodes techniques ou technologies",
+        ],
+    },
+    {
+        "id": "C7",
+        "title": "C7 Communiquer",
+        "description": [
+            "Communiquer avec des specialistes comme avec des non specialistes en francais et en anglais",
+            "Animer et convaincre",
+        ],
+    },
+    {
+        "id": "C8",
+        "title": "C8 Competence specifique",
+        "description": [
+            "Competences specifiques definies par l'entreprise (connaissance metiers, normes ou legislation)",
+        ],
+    },
+]
+
+COMPETENCY_LEVELS = [
+    {"value": "non_acquis", "label": "Non acquis"},
+    {"value": "en_cours", "label": "En cours d'acquisition"},
+    {"value": "acquis", "label": "Acquis"},
+    {"value": "non_aborde", "label": "Non aborde en entreprise"},
+]
+
+COMPETENCY_COLLECTION_NAME = "competency_evaluations"
 COMMENTER_ROLES = {
     "tuteur",
     "tuteur_pedagogique",
@@ -623,3 +704,94 @@ async def get_document_file(document_id: str) -> tuple[Path, str, str]:
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Fichier introuvable sur le serveur")
     return file_path, document.get("file_name") or file_path.name, document.get("file_type") or "application/octet-stream"
+
+
+def _competency_collection():
+    if database.db is None:
+        raise HTTPException(status_code=500, detail="Connexion DB absente")
+    return database.db[COMPETENCY_COLLECTION_NAME]
+
+
+async def list_competency_evaluations(apprenti_id: str) -> Dict[str, Any]:
+    apprenti, promotion = await _retrieve_apprenti_and_promotion(apprenti_id)
+    collection = _competency_collection()
+    record = await collection.find_one({"apprentice_id": apprenti_id})
+    stored_evaluations: Dict[str, Dict[str, str]] = record.get("evaluations", {}) if record else {}
+
+    semesters_payload = []
+    for semester in sorted(promotion.get("semesters", []), key=lambda entry: entry.get("order", 0)):
+        semester_id = _normalize_semester_id(semester.get("semester_id") or semester.get("id"))
+        if not semester_id:
+            continue
+        evaluations_for_semester = stored_evaluations.get(semester_id, {})
+        competencies_payload = [
+            {
+                "competency_id": definition["id"],
+                "level": evaluations_for_semester.get(definition["id"]),
+            }
+            for definition in COMPETENCY_DEFINITIONS
+        ]
+        semesters_payload.append(
+            {
+                "semester_id": semester_id,
+                "name": semester.get("name") or semester_id,
+                "competencies": competencies_payload,
+            }
+        )
+
+    promotion_summary = {
+        "promotion_id": str(promotion["_id"]),
+        "annee_academique": promotion.get("annee_academique"),
+        "label": promotion.get("label"),
+    }
+    return {
+        "promotion": promotion_summary,
+        "semesters": semesters_payload,
+        "competencies": [
+            {
+                "id": definition["id"],
+                "title": definition["title"],
+                "description": definition["description"],
+            }
+            for definition in COMPETENCY_DEFINITIONS
+        ],
+        "levels": COMPETENCY_LEVELS,
+    }
+
+
+async def update_competency_evaluations(apprenti_id: str, semester_id: str, entries: List[Dict[str, str]]) -> Dict[str, Any]:
+    semester_id = semester_id.strip()
+    if not semester_id:
+        raise HTTPException(status_code=400, detail="Semestre requis")
+    _, promotion = await _retrieve_apprenti_and_promotion(apprenti_id)
+    _resolve_semester(promotion, semester_id)
+
+    valid_competency_ids = {definition["id"] for definition in COMPETENCY_DEFINITIONS}
+    valid_levels = {level["value"] for level in COMPETENCY_LEVELS}
+
+    normalized_entries: Dict[str, str] = {}
+    for entry in entries:
+        competency_id = entry.get("competency_id")
+        level = entry.get("level")
+        if competency_id not in valid_competency_ids:
+            raise HTTPException(status_code=400, detail="Competence inconnue")
+        if level not in valid_levels:
+            raise HTTPException(status_code=400, detail="Niveau de competence invalide")
+        normalized_entries[competency_id] = level
+
+    collection = _competency_collection()
+    await collection.update_one(
+        {"apprentice_id": apprenti_id},
+        {
+            "$set": {
+                "apprentice_id": apprenti_id,
+                "promotion_id": str(promotion["_id"]),
+                f"evaluations.{semester_id}": normalized_entries,
+                "updated_at": datetime.utcnow(),
+            },
+            "$setOnInsert": {"created_at": datetime.utcnow()},
+        },
+        upsert=True,
+    )
+
+    return await list_competency_evaluations(apprenti_id)

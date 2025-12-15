@@ -1,6 +1,12 @@
 import React from "react";
 import { APPRENTI_API_URL, fetchJson } from "../config";
 import { useAuth, useCan } from "../auth/Permissions";
+import {
+  fetchApprenticeCompetencies,
+  updateApprenticeCompetencies,
+  type ApprenticeCompetenciesResponse,
+  type CompetencyLevelValue,
+} from "../api/competencies";
 
 type ContactInfo = {
   tuteur_id?: string;
@@ -38,11 +44,34 @@ type SelectableApprentice = {
   email: string;
 };
 
+const DEFAULT_COMPETENCY_LEVELS: { value: CompetencyLevelValue; label: string }[] = [
+  { value: "non_acquis", label: "Non acquis" },
+  { value: "en_cours", label: "En cours d'acquisition" },
+  { value: "acquis", label: "Acquis" },
+  { value: "non_aborde", label: "Non aborde en entreprise" },
+];
+
 export default function Entretiens() {
   const { me, token } = useAuth();
   const canSchedule = useCan("meeting:schedule:own");
+  const normalizedRoleSet = React.useMemo(() => {
+    const roles = new Set<string>();
+    if (typeof me.role === "string" && me.role.trim()) {
+      roles.add(me.role.toLowerCase());
+    }
+    (me.roles ?? []).forEach((role) => {
+      if (typeof role === "string" && role.trim()) {
+        roles.add(role.toLowerCase());
+      }
+    });
+    return roles;
+  }, [me.role, me.roles]);
   const isApprentice =
     me.role === "apprenti" || (Array.isArray(me.roles) && me.roles.includes("apprenti"));
+  const canEditCompetencies = React.useMemo(
+    () => Array.from(normalizedRoleSet).some((role) => role.includes("maitre")),
+    [normalizedRoleSet]
+  );
   const selfApprenticeOption: SelectableApprentice | null = isApprentice
     ? {
         id: me.id,
@@ -92,6 +121,39 @@ export default function Entretiens() {
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
 
   const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null);
+
+  const [competencySummary, setCompetencySummary] =
+    React.useState<ApprenticeCompetenciesResponse | null>(null);
+  const [competencyDraft, setCompetencyDraft] = React.useState<
+    Record<string, Record<string, CompetencyLevelValue | "">>
+  >({});
+  const [isLoadingCompetencies, setIsLoadingCompetencies] = React.useState(false);
+  const [competencyError, setCompetencyError] = React.useState<string | null>(null);
+  const [competencySavingMap, setCompetencySavingMap] = React.useState<Record<string, boolean>>(
+    {}
+  );
+  const [openCompetencySemesters, setOpenCompetencySemesters] = React.useState<
+    Record<string, boolean>
+  >({});
+
+  const buildCompetencyDraft = React.useCallback(
+    (summary: ApprenticeCompetenciesResponse | null) => {
+      if (!summary) {
+        return {};
+      }
+      const draft: Record<string, Record<string, CompetencyLevelValue | "">> = {};
+      summary.semesters.forEach((semester) => {
+        const entries: Record<string, CompetencyLevelValue | ""> = {};
+        semester.competencies.forEach((competency) => {
+          entries[competency.competency_id] =
+            (competency.level as CompetencyLevelValue | null) ?? "";
+        });
+        draft[semester.semester_id] = entries;
+      });
+      return draft;
+    },
+    []
+  );
 
   const canModifySelected = canSchedule && selectedApprenticeId === me.id;
   const hasApprenticeSelection = availableApprentices.length > 0;
@@ -154,6 +216,54 @@ export default function Entretiens() {
       cancelled = true;
     };
   }, [hasApprenticeSelection, selectedApprenticeId, token]);
+
+  React.useEffect(() => {
+    if (!token || !selectedApprenticeId) {
+      setCompetencySummary(null);
+      setCompetencyDraft({});
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingCompetencies(true);
+    setCompetencyError(null);
+    fetchApprenticeCompetencies(selectedApprenticeId, token)
+      .then((payload) => {
+        if (cancelled) return;
+        setCompetencySummary(payload);
+        setCompetencyDraft(buildCompetencyDraft(payload));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Impossible de charger les competences pour cet apprenti.";
+        setCompetencyError(message);
+        setCompetencySummary(null);
+        setCompetencyDraft({});
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingCompetencies(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [buildCompetencyDraft, selectedApprenticeId, token]);
+  React.useEffect(() => {
+    if (!competencySummary) {
+      setOpenCompetencySemesters({});
+      return;
+    }
+    setOpenCompetencySemesters((current) => {
+      const next: Record<string, boolean> = {};
+      competencySummary.semesters.forEach((semester) => {
+        next[semester.semester_id] = current[semester.semester_id] ?? false;
+      });
+      return next;
+    });
+  }, [competencySummary]);
 
   const sortedEntretiens = React.useMemo(() => {
     return [...entretiens].sort((a, b) => {
@@ -230,6 +340,60 @@ export default function Entretiens() {
     }
   };
 
+  const handleCompetencyChange = React.useCallback(
+    (semesterId: string, competencyId: string, level: string) => {
+      setCompetencyDraft((current) => {
+        const nextSemester = { ...(current[semesterId] ?? {}) };
+        nextSemester[competencyId] = (level as CompetencyLevelValue) || "";
+        return { ...current, [semesterId]: nextSemester };
+      });
+    },
+    []
+  );
+
+  const handleSaveCompetencies = React.useCallback(
+    async (semesterId: string) => {
+      if (!token || !selectedApprenticeId || !canEditCompetencies) {
+        return;
+      }
+      const semesterValues = competencyDraft[semesterId] ?? {};
+      const entries = Object.entries(semesterValues)
+        .filter(([, value]) => Boolean(value))
+        .map(([competency_id, level]) => ({
+          competency_id,
+          level: level as CompetencyLevelValue,
+        }));
+      setCompetencyError(null);
+      setCompetencySavingMap((current) => ({ ...current, [semesterId]: true }));
+      try {
+        const payload = await updateApprenticeCompetencies(
+          selectedApprenticeId,
+          semesterId,
+          { entries },
+          token
+        );
+        setCompetencySummary(payload);
+        setCompetencyDraft(buildCompetencyDraft(payload));
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Impossible d'enregistrer les competences pour ce semestre.";
+        setCompetencyError(message);
+      } finally {
+        setCompetencySavingMap((current) => ({ ...current, [semesterId]: false }));
+      }
+    },
+    [buildCompetencyDraft, canEditCompetencies, competencyDraft, selectedApprenticeId, token]
+  );
+
+  const toggleCompetencySemester = React.useCallback((semesterId: string) => {
+    setOpenCompetencySemesters((current) => ({
+      ...current,
+      [semesterId]: !current[semesterId],
+    }));
+  }, []);
+
   const formatDateTime = (value: string) => {
     if (!value) return "Date non renseignée";
     const date = new Date(value);
@@ -258,6 +422,23 @@ export default function Entretiens() {
   const selectedApprentice = availableApprentices.find(
     (apprentice) => apprentice.id === selectedApprenticeId
   );
+
+  const competencyLevelOptions = competencySummary?.levels ?? DEFAULT_COMPETENCY_LEVELS;
+  const competencyLevelLabelMap = React.useMemo(() => {
+    const map = new Map<string, string>();
+    competencyLevelOptions.forEach((option) => {
+      map.set(option.value, option.label);
+    });
+    return map;
+  }, [competencyLevelOptions]);
+
+  const competencyDefinitionMap = React.useMemo(() => {
+    const map = new Map<string, { title: string; description: string[] }>();
+    (competencySummary?.competencies ?? []).forEach((definition) => {
+      map.set(definition.id, { title: definition.title, description: definition.description });
+    });
+    return map;
+  }, [competencySummary]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -406,6 +587,206 @@ export default function Entretiens() {
           )}
         </form>
       )}
+
+      <section
+        style={{
+          border: "1px solid #e2e8f0",
+          borderRadius: 16,
+          padding: 24,
+          background: "#fff",
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 12,
+          }}
+        >
+          <div>
+            <h2 style={{ margin: 0 }}>Evaluation des competences</h2>
+            <p style={{ margin: "6px 0 0", color: "#475569" }}>
+              {competencySummary
+                ? `Promotion ${competencySummary.promotion.label ?? competencySummary.promotion.annee_academique}`
+                : "Selectionnez un apprenti pour consulter la grille."}
+            </p>
+          </div>
+        </div>
+        {competencyError && <p style={{ margin: 0, color: "#b91c1c" }}>{competencyError}</p>}
+        {isLoadingCompetencies ? (
+          <p>Chargement des competences...</p>
+        ) : competencySummary && competencySummary.semesters.length > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {competencySummary.semesters.map((semester) => {
+              const semesterDraft = competencyDraft[semester.semester_id] ?? {};
+              return (
+                <article
+                  key={semester.semester_id}
+                  style={{
+                    border: "1px solid #cbd5f5",
+                    borderRadius: 12,
+                    padding: 16,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                  }}
+                >
+                  <header
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => toggleCompetencySemester(semester.semester_id)}
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 8,
+                          border: "1px solid #cbd5f5",
+                          background: "#fff",
+                          cursor: "pointer",
+                          fontWeight: 700,
+                          color: "#2563eb",
+                        }}
+                        aria-label={
+                          openCompetencySemesters[semester.semester_id]
+                            ? "Replier le semestre"
+                            : "Deplier le semestre"
+                        }
+                      >
+                        {openCompetencySemesters[semester.semester_id] ? "-" : "+"}
+                      </button>
+                      <div>
+                        <h3 style={{ margin: 0 }}>{semester.name}</h3>
+                        <p style={{ margin: 0, color: "#64748b" }}>
+                          Complete par le maitre d'apprentissage
+                        </p>
+                      </div>
+                    </div>
+                    {canEditCompetencies && (
+                      <button
+                        type="button"
+                        onClick={() => handleSaveCompetencies(semester.semester_id)}
+                        disabled={Boolean(competencySavingMap[semester.semester_id])}
+                        style={{
+                          padding: "10px 16px",
+                          borderRadius: 8,
+                          border: "none",
+                          background: competencySavingMap[semester.semester_id] ? "#93c5fd" : "#2563eb",
+                          color: "#fff",
+                          fontWeight: 600,
+                          cursor: competencySavingMap[semester.semester_id] ? "wait" : "pointer",
+                        }}
+                      >
+                        {competencySavingMap[semester.semester_id] ? "Enregistrement..." : "Enregistrer les notes"}
+                      </button>
+                    )}
+                  </header>
+                  {openCompetencySemesters[semester.semester_id] ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      {semester.competencies.map((entry) => {
+                        const definition = competencyDefinitionMap.get(entry.competency_id);
+                        const fieldValue = semesterDraft[entry.competency_id] ?? "";
+                        const displayLabel = entry.level
+                          ? competencyLevelLabelMap.get(entry.level) ?? entry.level
+                          : "Non renseigne";
+                        return (
+                          <div
+                            key={`${semester.semester_id}-${entry.competency_id}`}
+                            style={{ borderTop: "1px solid #e2e8f0", paddingTop: 12 }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: canEditCompetencies ? "flex-start" : "center",
+                                gap: 12,
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <div style={{ flex: 1, minWidth: 220 }}>
+                                <p style={{ margin: 0, fontWeight: 600 }}>
+                                  {definition?.title || entry.competency_id}
+                                </p>
+                                {definition?.description?.length ? (
+                                  <ul
+                                    style={{
+                                      margin: "4px 0 0",
+                                      paddingLeft: "1.25rem",
+                                      color: "#475569",
+                                      fontSize: 13,
+                                    }}
+                                  >
+                                    {definition.description.map((line) => (
+                                      <li key={line}>{line}</li>
+                                    ))}
+                                  </ul>
+                                ) : null}
+                              </div>
+                              {canEditCompetencies ? (
+                                <select
+                                  value={fieldValue}
+                                  onChange={(event) =>
+                                    handleCompetencyChange(
+                                      semester.semester_id,
+                                      entry.competency_id,
+                                      event.target.value
+                                    )
+                                  }
+                                  style={{
+                                    padding: "10px 12px",
+                                    borderRadius: 8,
+                                    border: "1px solid #cbd5f5",
+                                    minWidth: 220,
+                                  }}
+                                >
+                                  <option value="">Selectionnez un niveau</option>
+                                  {competencyLevelOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span
+                                  style={{
+                                    padding: "6px 12px",
+                                    borderRadius: 999,
+                                    background: "#f1f5f9",
+                                    color: "#0f172a",
+                                    fontSize: 13,
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {displayLabel}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <p style={{ margin: 0, color: "#475569" }}>
+            Aucun semestre n'est configure pour les competences de cet apprenti.
+          </p>
+        )}
+      </section>
 
       {error && (
         <div

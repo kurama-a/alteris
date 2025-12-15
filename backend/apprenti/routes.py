@@ -7,6 +7,8 @@ from apprenti.models import (
     ApprenticeDocumentsResponse,
     DocumentUploadResponse,
     DocumentCommentRequest,
+    ApprenticeCompetencyResponse,
+    CompetencyUpdateRequest,
 )
 from .functions import (
     recuperer_infos_apprenti_completes,
@@ -17,6 +19,8 @@ from .functions import (
     update_journal_document,
     add_document_comment,
     get_document_file,
+    list_competency_evaluations,
+    update_competency_evaluations,
 )
 
 apprenti_api = APIRouter(tags=["Apprenti"])
@@ -118,3 +122,25 @@ async def comment_document(
 async def download_document(document_id: str):
     file_path, file_name, content_type = await get_document_file(document_id)
     return FileResponse(path=file_path, filename=file_name, media_type=content_type)
+
+
+@apprenti_api.get(
+    "/apprentis/{apprenti_id}/competences",
+    response_model=ApprenticeCompetencyResponse,
+    summary="Lister l'evaluation des competences par semestre",
+)
+async def get_competency_evaluations(apprenti_id: str):
+    return await list_competency_evaluations(apprenti_id)
+
+
+@apprenti_api.post(
+    "/apprentis/{apprenti_id}/competences/{semester_id}",
+    response_model=ApprenticeCompetencyResponse,
+    summary="Mettre a jour les competences d'un semestre",
+)
+async def save_competency_evaluations(
+    apprenti_id: str,
+    semester_id: str,
+    payload: CompetencyUpdateRequest,
+):
+    return await update_competency_evaluations(apprenti_id, semester_id, [entry.model_dump() for entry in payload.entries])

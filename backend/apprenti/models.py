@@ -79,3 +79,41 @@ class DocumentCommentRequest(BaseModel):
     author_name: str
     author_role: str
     content: str
+
+
+class CompetencyDefinitionModel(BaseModel):
+    id: str
+    title: str
+    description: list[str]
+
+
+class CompetencyLevelModel(BaseModel):
+    value: str
+    label: str
+
+
+class CompetencyEntryModel(BaseModel):
+    competency_id: str
+    level: Optional[str] = None
+
+
+class SemesterCompetencyModel(BaseModel):
+    semester_id: str
+    name: str
+    competencies: list[CompetencyEntryModel]
+
+
+class ApprenticeCompetencyResponse(BaseModel):
+    promotion: PromotionSummaryModel
+    semesters: list[SemesterCompetencyModel]
+    competencies: list[CompetencyDefinitionModel]
+    levels: list[CompetencyLevelModel]
+
+
+class CompetencyUpdateEntry(BaseModel):
+    competency_id: str
+    level: str
+
+
+class CompetencyUpdateRequest(BaseModel):
+    entries: list[CompetencyUpdateEntry]
