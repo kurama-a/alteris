@@ -32,6 +32,15 @@ type JuryRecord = {
     apprenti: JuryMemberDetails;
     intervenant: JuryMemberDetails;
   };
+  promotion_reference?: {
+    promotion_id: string;
+    annee_academique?: string;
+    label?: string;
+    semester_id: string;
+    semester_name: string;
+    deliverable_id?: string;
+    deliverable_title?: string;
+  };
 };
 
 type UsersResponse = {
@@ -39,7 +48,9 @@ type UsersResponse = {
 };
 
 type JuryFormState = {
-  semestre_reference: string;
+  promotionId: string;
+  semesterId: string;
+  deliverableId: string;
   date: string;
   status: JuryStatus;
   tuteurId: string;
@@ -52,6 +63,25 @@ type JuryUserOption = {
   id: string;
   label: string;
   email?: string;
+};
+
+type TimelineDeliverableOption = {
+  deliverable_id: string;
+  title: string;
+  due_date?: string | null;
+};
+
+type TimelineSemesterOption = {
+  semester_id: string;
+  name: string;
+  deliverables: TimelineDeliverableOption[];
+};
+
+type PromotionTimelineOption = {
+  promotion_id: string;
+  annee_academique: string;
+  label?: string;
+  semesters: TimelineSemesterOption[];
 };
 
 const STATUS_LABELS: Record<JuryStatus, string> = {
@@ -78,7 +108,9 @@ const emptyOptions = {
 };
 
 const initialFormState: JuryFormState = {
-  semestre_reference: "",
+  promotionId: "",
+  semesterId: "",
+  deliverableId: "",
   date: "",
   status: "planifie",
   tuteurId: "",
@@ -108,7 +140,10 @@ export default function Juries() {
 
   const [userOptions, setUserOptions] = React.useState<typeof emptyOptions>(emptyOptions);
   const [isLoadingUsers, setIsLoadingUsers] = React.useState(false);
-const [usersError, setUsersError] = React.useState<string | null>(null);
+  const [usersError, setUsersError] = React.useState<string | null>(null);
+  const [timelineOptions, setTimelineOptions] = React.useState<PromotionTimelineOption[]>([]);
+  const [isLoadingTimeline, setIsLoadingTimeline] = React.useState(false);
+  const [timelineError, setTimelineError] = React.useState<string | null>(null);
   const [selectedApprenticeId, setSelectedApprenticeId] = React.useState("");
 
   const normalizedRoles = React.useMemo(
@@ -172,6 +207,17 @@ const [usersError, setUsersError] = React.useState<string | null>(null);
     return accessibleJuries;
   }, [accessibleJuries, canManageJuries, selectedApprenticeId]);
 
+  const selectedPromotion = React.useMemo(
+    () => timelineOptions.find((option) => option.promotion_id === formDraft.promotionId),
+    [timelineOptions, formDraft.promotionId]
+  );
+  const availableSemesters = selectedPromotion?.semesters ?? [];
+  const selectedSemester = React.useMemo(
+    () => availableSemesters.find((semester) => semester.semester_id === formDraft.semesterId),
+    [availableSemesters, formDraft.semesterId]
+  );
+  const availableDeliverables = selectedSemester?.deliverables ?? [];
+
   const fetchJuries = React.useCallback(async () => {
     if (!token) {
       setJuries([]);
@@ -231,11 +277,33 @@ const [usersError, setUsersError] = React.useState<string | null>(null);
     }
   }, [canManageJuries, token]);
 
+  const loadTimelineOptions = React.useCallback(async () => {
+    if (!token || !canManageJuries) return;
+    setIsLoadingTimeline(true);
+    setTimelineError(null);
+    try {
+      const payload = await fetchJson<PromotionTimelineOption[]>(`${JURY_API_URL}/promotions-timeline`, {
+        token,
+      });
+      setTimelineOptions(payload ?? []);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Impossible de charger les promotions.";
+      setTimelineError(message);
+      setTimelineOptions([]);
+    } finally {
+      setIsLoadingTimeline(false);
+    }
+  }, [canManageJuries, token]);
+
   React.useEffect(() => {
     if (canManageJuries) {
       loadAssignableUsers();
+      loadTimelineOptions();
+    } else {
+      setTimelineOptions([]);
     }
-  }, [canManageJuries, loadAssignableUsers]);
+  }, [canManageJuries, loadAssignableUsers, loadTimelineOptions]);
 
   React.useEffect(() => {
     if (!canManageJuries) {
@@ -244,7 +312,15 @@ const [usersError, setUsersError] = React.useState<string | null>(null);
   }, [canManageJuries]);
 
   const handleFormChange = React.useCallback((key: keyof JuryFormState, value: string) => {
-    setFormDraft((current) => ({ ...current, [key]: value }));
+    setFormDraft((current) => {
+      if (key === "promotionId") {
+        return { ...current, promotionId: value, semesterId: "", deliverableId: "" };
+      }
+      if (key === "semesterId") {
+        return { ...current, semesterId: value, deliverableId: "" };
+      }
+      return { ...current, [key]: value };
+    });
     setCreateError(null);
     setCreateSuccess(null);
   }, []);
@@ -257,7 +333,8 @@ const [usersError, setUsersError] = React.useState<string | null>(null);
         return;
       }
       if (
-        !formDraft.semestre_reference.trim() ||
+        !formDraft.promotionId ||
+        !formDraft.semesterId ||
         !formDraft.date ||
         !formDraft.tuteurId ||
         !formDraft.professeurId ||
@@ -275,7 +352,9 @@ const [usersError, setUsersError] = React.useState<string | null>(null);
           method: "POST",
           token,
           body: JSON.stringify({
-            semestre_reference: formDraft.semestre_reference.trim(),
+            promotion_id: formDraft.promotionId,
+            semester_id: formDraft.semesterId,
+            deliverable_id: formDraft.deliverableId || undefined,
             date: new Date(formDraft.date).toISOString(),
             status: formDraft.status,
             tuteur_id: formDraft.tuteurId,
@@ -389,15 +468,75 @@ const [usersError, setUsersError] = React.useState<string | null>(null);
               }}
             >
               <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span>Semestre de référence</span>
-                <input
-                  type="text"
-                  value={formDraft.semestre_reference}
-                  onChange={(event) => handleFormChange("semestre_reference", event.target.value)}
-                  placeholder="E5A, S9..."
+                <span>Promotion</span>
+                <select
+                  value={formDraft.promotionId}
+                  onChange={(event) => handleFormChange("promotionId", event.target.value)}
                   style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5f5" }}
                   required
-                />
+                >
+                  <option value="">Sélectionner une promotion</option>
+                  {timelineOptions.map((option) => (
+                    <option key={option.promotion_id} value={option.promotion_id}>
+                      {option.label
+                        ? `${option.label} (${option.annee_academique})`
+                        : option.annee_academique}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span>Semestre</span>
+                <select
+                  value={formDraft.semesterId}
+                  onChange={(event) => handleFormChange("semesterId", event.target.value)}
+                  style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5f5" }}
+                  required
+                  disabled={!formDraft.promotionId || availableSemesters.length === 0}
+                >
+                  <option value="">
+                    {formDraft.promotionId ? "Sélectionner un semestre" : "Choisissez une promotion"}
+                  </option>
+                  {availableSemesters.map((semester) => (
+                    <option key={semester.semester_id} value={semester.semester_id}>
+                      {semester.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span>Livrable (optionnel)</span>
+                <select
+                  value={formDraft.deliverableId}
+                  onChange={(event) => handleFormChange("deliverableId", event.target.value)}
+                  style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5f5" }}
+                  disabled={!formDraft.semesterId || availableDeliverables.length === 0}
+                >
+                  <option value="">
+                    {availableDeliverables.length
+                      ? "Aucun livrable particulier"
+                      : "Aucun livrable défini"}
+                  </option>
+                  {availableDeliverables.map((deliverable) => (
+                    <option key={deliverable.deliverable_id} value={deliverable.deliverable_id}>
+                      {deliverable.title}
+                      {deliverable.due_date ? ` - ${deliverable.due_date}` : ""}
+                    </option>
+                  ))}
+                </select>
+                {formDraft.deliverableId && availableDeliverables.length > 0 ? (
+                  <small style={{ color: "#64748b" }}>
+                    {availableDeliverables.find(
+                      (deliverable) => deliverable.deliverable_id === formDraft.deliverableId
+                    )?.due_date
+                      ? `Échéance : ${
+                          availableDeliverables.find(
+                            (deliverable) => deliverable.deliverable_id === formDraft.deliverableId
+                          )?.due_date
+                        }`
+                      : "Aucune échéance définie pour ce livrable"}
+                  </small>
+                ) : null}
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span>Date et heure</span>
@@ -489,6 +628,14 @@ const [usersError, setUsersError] = React.useState<string | null>(null);
               </label>
             </div>
             <div>
+              {timelineError && (
+                <p style={{ margin: "4px 0 0", color: "#b91c1c" }}>{timelineError}</p>
+              )}
+              {isLoadingTimeline && (
+                <p style={{ margin: "4px 0 0", color: "#2563eb" }}>
+                  Chargement des promotions et semestres...
+                </p>
+              )}
               {usersError && (
                 <p style={{ margin: "4px 0 0", color: "#b45309" }}>{usersError}</p>
               )}
@@ -610,13 +757,26 @@ const [usersError, setUsersError] = React.useState<string | null>(null);
                   }}
                 >
                   <div>
-                    <strong>Semestre {jury.semestre_reference}</strong>
+                    <strong>
+                      {jury.promotion_reference
+                        ? `${
+                            jury.promotion_reference.label ||
+                            jury.promotion_reference.annee_academique ||
+                            "Promotion"
+                          } • ${jury.promotion_reference.semester_name}`
+                        : `Semestre ${jury.semestre_reference}`}
+                    </strong>
                     <p style={{ margin: 0, color: "#475569" }}>
                       {new Date(jury.date).toLocaleString("fr-FR", {
                         dateStyle: "full",
                         timeStyle: "short",
                       })}
                     </p>
+                    {jury.promotion_reference?.deliverable_title && (
+                      <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>
+                        Livrable ciblé : {jury.promotion_reference.deliverable_title}
+                      </p>
+                    )}
                   </div>
                   <span
                     style={{
