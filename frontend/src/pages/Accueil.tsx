@@ -159,14 +159,14 @@ export default function Accueil() {
       ),
     [normalizedRoles]
   );
-  const hasGlobalPromotionSelector = React.useMemo(
-    () =>
-      normalizedRoles.has("admin") ||
-      Array.from(normalizedRoles).some(
-        (role) => role.includes("responsable") || role.includes("coordin")
-      ),
-    [normalizedRoles]
-  );
+  const hasGlobalPromotionSelector = React.useMemo(() => {
+    if (normalizedRoles.has("admin") || normalizedRoles.has("administrateur")) {
+      return true;
+    }
+    return Array.from(normalizedRoles).some(
+      (role) => role.includes("responsable") || role.includes("coordin")
+    );
+  }, [normalizedRoles]);
   const requiresPromotionSelector = isTutorRole || hasGlobalPromotionSelector;
 
   React.useEffect(() => {
@@ -279,18 +279,22 @@ export default function Accueil() {
     [accessiblePromotions]
   );
 
-  const activePromotions = React.useMemo(() => {
+  const activePromotion = React.useMemo(() => {
     if (!accessiblePromotions.length) {
-      return [];
+      return null;
     }
-    if (!requiresPromotionSelector) {
-      return accessiblePromotions;
+    if (requiresPromotionSelector) {
+      if (!selectedPromotionId) {
+        return null;
+      }
+      return accessiblePromotions.find((promotion) => promotion.id === selectedPromotionId) ?? null;
     }
-    if (!selectedPromotionId) {
-      return [];
-    }
-    return accessiblePromotions.filter((promotion) => promotion.id === selectedPromotionId);
+    return accessiblePromotions[0] ?? null;
   }, [accessiblePromotions, requiresPromotionSelector, selectedPromotionId]);
+
+  const activePromotions = React.useMemo(() => {
+    return activePromotion ? [activePromotion] : [];
+  }, [activePromotion]);
 
   React.useEffect(() => {
     if (!activePromotions.length) {
@@ -422,7 +426,7 @@ export default function Accueil() {
       }
       return "Aucune promotion disponible.";
     }
-    if (requiresPromotionSelector && !activePromotions.length) {
+    if (requiresPromotionSelector && !activePromotion) {
       return "Sélectionnez une promotion pour afficher ses échéances.";
     }
     return "Aucune échéance n'a encore été définie pour cette promotion.";
@@ -432,7 +436,7 @@ export default function Accueil() {
     hasGlobalPromotionSelector,
     isApprentice,
     requiresPromotionSelector,
-    activePromotions.length,
+    activePromotion,
   ]);
 
   return (
@@ -468,23 +472,80 @@ export default function Accueil() {
           </div>
           {requiresPromotionSelector ? (
             <div className="calendar-filter">
-              <label style={{ display: "flex", flexDirection: "column", fontSize: 14, gap: 4 }}>
+              <label
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  fontSize: 14,
+                  gap: 4,
+                  fontWeight: 500,
+                }}
+              >
                 Promotion affichée
                 <select
                   value={selectedPromotionId ?? ""}
                   onChange={(event) => setSelectedPromotionId(event.target.value || null)}
                   disabled={!promotionSelectorOptions.length}
+                  style={{
+                    borderRadius: 8,
+                    border: "1px solid #cbd5f5",
+                    padding: "8px 12px",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    background: "#fff",
+                  }}
                 >
-                  {promotionSelectorOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
+                  {promotionSelectorOptions.length === 0 ? (
+                    <option value="">Aucune promotion disponible</option>
+                  ) : (
+                    promotionSelectorOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))
+                  )}
                 </select>
               </label>
             </div>
           ) : null}
         </div>
+        {activePromotion ? (
+          <div
+            style={{
+              border: "1px solid rgba(37, 99, 235, 0.2)",
+              background: "rgba(37, 99, 235, 0.08)",
+              padding: "12px 16px",
+              borderRadius: 12,
+              marginBottom: 16,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 12,
+            }}
+          >
+            <div>
+              <p style={{ margin: 0, color: "#1d4ed8", fontWeight: 600 }}>Promotion en cours d'affichage</p>
+              <strong style={{ fontSize: 16 }}>
+                {getPromotionDisplayLabel(activePromotion)}{" "}
+                {activePromotion.annee_academique ? `(${activePromotion.annee_academique})` : ""}
+              </strong>
+            </div>
+            <span
+              style={{
+                padding: "4px 12px",
+                borderRadius: 999,
+                background: "#fff",
+                border: "1px solid #93c5fd",
+                color: "#1d4ed8",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              {activePromotion.semesters?.length ?? 0} semestre(s)
+            </span>
+          </div>
+        ) : null}
         {calendarError ? <p className="calendar-status calendar-error">{calendarError}</p> : null}
         {isLoadingCalendar ? (
           <p className="calendar-status">Chargement des echeances...</p>

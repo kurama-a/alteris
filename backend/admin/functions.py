@@ -190,7 +190,19 @@ async def get_apprentis_by_annee_academique(annee_academique: str):
     updated = await collection_promo.find_one({"annee_academique": annee_academique})
     if not updated:
         raise HTTPException(status_code=500, detail="Impossible de générer la promotion demandée")
-    return updated
+    return _serialize_promotion_document(updated)
+
+
+async def _sync_promotion_apprentices_if_available(annee_academique: str):
+    """
+    Tentative de synchronisation des apprentis d'une promotion si l'année est déjà utilisée.
+    Ne bloque pas la création si aucun apprenti n'est encore associé.
+    """
+    try:
+        await get_apprentis_by_annee_academique(annee_academique)
+    except HTTPException as exc:
+        if exc.status_code not in (400, 404):
+            raise
 
 async def list_all_apprentis():
     """
@@ -367,7 +379,7 @@ async def create_or_update_promotion(payload: PromotionUpsertRequest):
         raise HTTPException(status_code=500, detail="Connexion DB absente")
 
     collection_promo = database.db["promos"]
-    await get_apprentis_by_annee_academique(payload.annee_academique)
+    await _sync_promotion_apprentices_if_available(payload.annee_academique)
 
     updates = {
         "label": payload.label or f"Promotion {payload.annee_academique}",
