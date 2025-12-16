@@ -18,11 +18,21 @@ type PromotionSemester = {
   deliverables?: PromotionDeliverable[];
 };
 
+type PromotionApprenticeRef = {
+  _id?: string;
+  id?: string;
+  apprenti_id?: string;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+};
+
 type PromotionRecord = {
   id: string;
   label?: string;
   annee_academique?: string;
   semesters?: PromotionSemester[];
+  apprentis?: PromotionApprenticeRef[];
 };
 
 type PromotionsResponse = {
@@ -101,6 +111,10 @@ function buildSemesterKey(promotionId: string, semester: PromotionSemester, fall
   return `${promotionId}-${base}`;
 }
 
+function getPromotionDisplayLabel(promotion: PromotionRecord): string {
+  return promotion.label || promotion.annee_academique || "Promotion";
+}
+
 export default function Accueil() {
   const me = useMe();
   const { token } = useAuth();
@@ -109,6 +123,8 @@ export default function Accueil() {
   const [calendarError, setCalendarError] = React.useState<string | null>(null);
   const [isLoadingCalendar, setIsLoadingCalendar] = React.useState(false);
   const [currentMonth, setCurrentMonth] = React.useState(() => new Date());
+  const [promotions, setPromotions] = React.useState<PromotionRecord[]>([]);
+  const [selectedPromotionId, setSelectedPromotionId] = React.useState<string | null>(null);
 
   const displayName = React.useMemo(() => {
     if (me.firstName || me.lastName) {
@@ -127,11 +143,38 @@ export default function Accueil() {
   }, [me.role, me.roles]);
 
   const isApprentice = normalizedRoles.has("apprenti");
+  const supervisedApprenticeIds = React.useMemo(() => {
+    const set = new Set<string>();
+    (me.apprentices ?? []).forEach((apprentice) => {
+      if (apprentice.id) {
+        set.add(apprentice.id);
+      }
+    });
+    return set;
+  }, [me.apprentices]);
+  const isTutorRole = React.useMemo(
+    () =>
+      Array.from(normalizedRoles).some(
+        (role) => role.includes("tuteur") || role.includes("maitre")
+      ),
+    [normalizedRoles]
+  );
+  const hasGlobalPromotionSelector = React.useMemo(
+    () =>
+      normalizedRoles.has("admin") ||
+      Array.from(normalizedRoles).some(
+        (role) => role.includes("responsable") || role.includes("coordin")
+      ),
+    [normalizedRoles]
+  );
+  const requiresPromotionSelector = isTutorRole || hasGlobalPromotionSelector;
 
   React.useEffect(() => {
     if (!token) {
+      setPromotions([]);
       setDeliverables([]);
       setSemesterRanges([]);
+      setIsLoadingCalendar(false);
       return;
     }
     let cancelled = false;
@@ -140,86 +183,7 @@ export default function Accueil() {
     fetchJson<PromotionsResponse>(`${ADMIN_API_URL}/promos`, { token })
       .then((payload) => {
         if (cancelled) return;
-        const allPromotions = payload.promotions ?? [];
-        const preferredPromo = me.anneeAcademique?.trim();
-        const shouldRestrictToPromo = isApprentice && preferredPromo?.length;
-        let scopedPromotions = allPromotions;
-        if (shouldRestrictToPromo) {
-          scopedPromotions = allPromotions.filter(
-            (promotion) =>
-              promotion.annee_academique &&
-              promotion.annee_academique.toLowerCase() === preferredPromo!.toLowerCase()
-          );
-        }
-        const sourcePromotions =
-          shouldRestrictToPromo && scopedPromotions.length > 0 ? scopedPromotions : allPromotions;
-        const normalized: CalendarDeliverable[] = [];
-        const ranges: CalendarSemesterRange[] = [];
-        let paletteIndex = 0;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        sourcePromotions.forEach((promotion) => {
-          const promotionLabel = promotion.label || promotion.annee_academique || "Promotion";
-          (promotion.semesters ?? []).forEach((semester, semesterIndex) => {
-            const semesterName = semester.name || "Semestre";
-            const semesterKey = buildSemesterKey(promotion.id, semester, semesterIndex);
-            const startValue = semester.start_date?.trim();
-            const endValue = semester.end_date?.trim();
-            if (startValue && endValue) {
-              const startDate = new Date(startValue);
-              const endDate = new Date(endValue);
-              if (!Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime())) {
-                startDate.setHours(0, 0, 0, 0);
-                endDate.setHours(0, 0, 0, 0);
-                if (endDate >= startDate) {
-                  ranges.push({
-                    id: semesterKey,
-                    label: `${semesterName} • ${promotionLabel}`,
-                    start: startDate,
-                    end: endDate,
-                    color: SEMESTER_COLOR_PALETTE[paletteIndex % SEMESTER_COLOR_PALETTE.length],
-                  });
-                  paletteIndex += 1;
-                }
-              }
-            }
-            (semester.deliverables ?? []).forEach((deliverable) => {
-              const dueDateValue = deliverable.due_date?.trim();
-              if (!dueDateValue) {
-                return;
-              }
-              const parsed = new Date(dueDateValue);
-              if (Number.isNaN(parsed.getTime())) {
-                return;
-              }
-              const dateKey = formatDateKey(parsed);
-              normalized.push({
-                id:
-                  deliverable.deliverable_id ??
-                  `${promotion.id}-${semester.semester_id ?? semester.name}-${deliverable.title ?? dateKey}`,
-                title: deliverable.title?.trim() || "Livrable",
-                date: parsed,
-                dateKey,
-                semesterName,
-                promotionLabel,
-                semesterKey,
-              });
-            });
-          });
-        });
-
-        normalized.sort((a, b) => a.date.getTime() - b.date.getTime());
-        setDeliverables(normalized);
-        setSemesterRanges(ranges);
-
-        const nextUpcoming = normalized.find((item) => item.date >= today) ?? normalized[0];
-        if (nextUpcoming) {
-          setCurrentMonth(
-            (current) =>
-              new Date(nextUpcoming.date.getFullYear(), nextUpcoming.date.getMonth(), current.getDate())
-          );
-        }
+        setPromotions(payload.promotions ?? []);
       })
       .catch((error) => {
         if (cancelled) return;
@@ -228,6 +192,7 @@ export default function Accueil() {
             ? error.message
             : "Impossible de charger les echeances des promotions.";
         setCalendarError(message);
+        setPromotions([]);
         setDeliverables([]);
         setSemesterRanges([]);
       })
@@ -240,7 +205,167 @@ export default function Accueil() {
     return () => {
       cancelled = true;
     };
-  }, [token, me.anneeAcademique, isApprentice]);
+  }, [token]);
+
+  const accessiblePromotions = React.useMemo(() => {
+    if (!promotions.length) {
+      return [];
+    }
+    if (isApprentice) {
+      const preferredPromo = me.anneeAcademique?.trim();
+      if (preferredPromo) {
+        const scoped = promotions.filter(
+          (promotion) =>
+            promotion.annee_academique &&
+            promotion.annee_academique.toLowerCase() === preferredPromo.toLowerCase()
+        );
+        if (scoped.length > 0) {
+          return scoped;
+        }
+      }
+      return promotions;
+    }
+    if (isTutorRole) {
+      if (supervisedApprenticeIds.size === 0) {
+        return [];
+      }
+      const scoped = promotions.filter((promotion) =>
+        (promotion.apprentis ?? []).some((apprentice) => {
+          const candidate =
+            apprentice._id ?? apprentice.id ?? apprentice.apprenti_id ?? apprentice.email;
+          return candidate ? supervisedApprenticeIds.has(String(candidate)) : false;
+        })
+      );
+      return scoped.length > 0 ? scoped : promotions;
+    }
+    if (hasGlobalPromotionSelector) {
+      return promotions;
+    }
+    return promotions;
+  }, [
+    promotions,
+    isApprentice,
+    me.anneeAcademique,
+    isTutorRole,
+    supervisedApprenticeIds,
+    hasGlobalPromotionSelector,
+  ]);
+
+  React.useEffect(() => {
+    if (!requiresPromotionSelector) {
+      if (selectedPromotionId !== null) {
+        setSelectedPromotionId(null);
+      }
+      return;
+    }
+    if (!accessiblePromotions.length) {
+      if (selectedPromotionId !== null) {
+        setSelectedPromotionId(null);
+      }
+      return;
+    }
+    if (!selectedPromotionId || !accessiblePromotions.some((promotion) => promotion.id === selectedPromotionId)) {
+      const nextId = accessiblePromotions[0]?.id ?? null;
+      setSelectedPromotionId(nextId ?? null);
+    }
+  }, [requiresPromotionSelector, accessiblePromotions, selectedPromotionId]);
+
+  const promotionSelectorOptions = React.useMemo(
+    () =>
+      accessiblePromotions.map((promotion) => ({
+        id: promotion.id,
+        label: getPromotionDisplayLabel(promotion),
+      })),
+    [accessiblePromotions]
+  );
+
+  const activePromotions = React.useMemo(() => {
+    if (!accessiblePromotions.length) {
+      return [];
+    }
+    if (!requiresPromotionSelector) {
+      return accessiblePromotions;
+    }
+    if (!selectedPromotionId) {
+      return [];
+    }
+    return accessiblePromotions.filter((promotion) => promotion.id === selectedPromotionId);
+  }, [accessiblePromotions, requiresPromotionSelector, selectedPromotionId]);
+
+  React.useEffect(() => {
+    if (!activePromotions.length) {
+      setDeliverables([]);
+      setSemesterRanges([]);
+      return;
+    }
+    const normalized: CalendarDeliverable[] = [];
+    const ranges: CalendarSemesterRange[] = [];
+    let paletteIndex = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    activePromotions.forEach((promotion) => {
+      const promotionLabel = getPromotionDisplayLabel(promotion);
+      (promotion.semesters ?? []).forEach((semester, semesterIndex) => {
+        const semesterName = semester.name || "Semestre";
+        const semesterKey = buildSemesterKey(promotion.id, semester, semesterIndex);
+        const startValue = semester.start_date?.trim();
+        const endValue = semester.end_date?.trim();
+        if (startValue && endValue) {
+          const startDate = new Date(startValue);
+          const endDate = new Date(endValue);
+          if (!Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime())) {
+            startDate.setHours(0, 0, 0, 0);
+            endDate.setHours(0, 0, 0, 0);
+            if (endDate >= startDate) {
+              ranges.push({
+                id: semesterKey,
+                label: `${semesterName} - ${promotionLabel}`,
+                start: startDate,
+                end: endDate,
+                color: SEMESTER_COLOR_PALETTE[paletteIndex % SEMESTER_COLOR_PALETTE.length],
+              });
+              paletteIndex += 1;
+            }
+          }
+        }
+        (semester.deliverables ?? []).forEach((deliverable) => {
+          const dueDateValue = deliverable.due_date?.trim();
+          if (!dueDateValue) {
+            return;
+          }
+          const parsed = new Date(dueDateValue);
+          if (Number.isNaN(parsed.getTime())) {
+            return;
+          }
+          const dateKey = formatDateKey(parsed);
+          normalized.push({
+            id:
+              deliverable.deliverable_id ??
+              `${promotion.id}-${semester.semester_id ?? semester.name}-${deliverable.title ?? dateKey}`,
+            title: deliverable.title?.trim() || "Livrable",
+            date: parsed,
+            dateKey,
+            semesterName,
+            promotionLabel,
+            semesterKey,
+          });
+        });
+      });
+    });
+
+    normalized.sort((a, b) => a.date.getTime() - b.date.getTime());
+    setDeliverables(normalized);
+    setSemesterRanges(ranges);
+
+    const nextUpcoming = normalized.find((item) => item.date >= today) ?? normalized[0];
+    if (nextUpcoming) {
+      setCurrentMonth(
+        (current) =>
+          new Date(nextUpcoming.date.getFullYear(), nextUpcoming.date.getMonth(), current.getDate())
+      );
+    }
+  }, [activePromotions]);
 
   const eventsByDate = React.useMemo(() => {
     const map: Record<string, CalendarDeliverable[]> = {};
@@ -284,6 +409,32 @@ export default function Accueil() {
     setCurrentMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1));
   }, []);
 
+  const emptyCalendarMessage = React.useMemo(() => {
+    if (!accessiblePromotions.length) {
+      if (isTutorRole) {
+        return "Aucune promotion n'est associée à vos apprentis pour le moment.";
+      }
+      if (hasGlobalPromotionSelector) {
+        return "Aucune promotion n'a encore été configurée.";
+      }
+      if (isApprentice) {
+        return "Votre promotion n'a pas encore de semestres planifiés.";
+      }
+      return "Aucune promotion disponible.";
+    }
+    if (requiresPromotionSelector && !activePromotions.length) {
+      return "Sélectionnez une promotion pour afficher ses échéances.";
+    }
+    return "Aucune échéance n'a encore été définie pour cette promotion.";
+  }, [
+    accessiblePromotions.length,
+    isTutorRole,
+    hasGlobalPromotionSelector,
+    isApprentice,
+    requiresPromotionSelector,
+    activePromotions.length,
+  ]);
+
   return (
     <main className="accueil">
       <section className="accueil-hero">
@@ -315,12 +466,32 @@ export default function Accueil() {
               {">"}
             </button>
           </div>
+          {requiresPromotionSelector ? (
+            <div className="calendar-filter">
+              <label style={{ display: "flex", flexDirection: "column", fontSize: 14, gap: 4 }}>
+                Promotion affichée
+                <select
+                  value={selectedPromotionId ?? ""}
+                  onChange={(event) => setSelectedPromotionId(event.target.value || null)}
+                  disabled={!promotionSelectorOptions.length}
+                >
+                  {promotionSelectorOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : null}
         </div>
         {calendarError ? <p className="calendar-status calendar-error">{calendarError}</p> : null}
         {isLoadingCalendar ? (
           <p className="calendar-status">Chargement des echeances...</p>
+        ) : activePromotions.length === 0 ? (
+          <p className="calendar-status">{emptyCalendarMessage}</p>
         ) : deliverables.length === 0 ? (
-          <p className="calendar-status">Aucune echeance n&apos;a encore ete definie pour votre promotion.</p>
+          <p className="calendar-status">{emptyCalendarMessage}</p>
         ) : (
           <>
             <div className="calendar-weekdays">
