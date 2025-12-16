@@ -16,7 +16,6 @@ from jury.models import (
     JuryStatus,
     JuryUpdateRequest,
     MemberDetails,
-    TimelineDeliverableOption,
     TimelineSemesterOption,
 )
 
@@ -68,13 +67,6 @@ def _parse_object_id(identifier: str) -> ObjectId:
         return ObjectId(identifier)
     except (InvalidId, TypeError):
         raise HTTPException(status_code=400, detail="Identifiant invalide")
-
-
-def _normalize_optional_id(value: Optional[str]) -> Optional[str]:
-    if value is None:
-        return None
-    trimmed = value.strip()
-    return trimmed or None
 
 
 async def _load_member(member_key: str, user_id: str) -> MemberDetails:
@@ -167,22 +159,11 @@ def _match_semester(document: dict, semester_id: str) -> dict:
     raise HTTPException(status_code=404, detail="Semestre introuvable pour cette promotion")
 
 
-def _match_deliverable(semester: dict, deliverable_id: Optional[str]) -> Optional[dict]:
-    if not deliverable_id:
-        return None
-    for deliverable in semester.get("deliverables", []):
-        current_id = str(deliverable.get("deliverable_id") or deliverable.get("id") or "")
-        if current_id == deliverable_id:
-            return deliverable
-    raise HTTPException(status_code=404, detail="Livrable introuvable pour ce semestre")
-
-
 async def _build_promotion_reference(
-    promotion_id: str, semester_id: str, deliverable_id: Optional[str]
+    promotion_id: str, semester_id: str
 ) -> Tuple[JuryPromotionReference, str]:
     promotion_doc = await _load_promotion_document(promotion_id)
     semester_doc = _match_semester(promotion_doc, semester_id)
-    deliverable_doc = _match_deliverable(semester_doc, deliverable_id)
 
     promotion_reference = JuryPromotionReference(
         promotion_id=str(promotion_doc["_id"]),
@@ -190,8 +171,6 @@ async def _build_promotion_reference(
         label=promotion_doc.get("label"),
         semester_id=semester_id,
         semester_name=semester_doc.get("name"),
-        deliverable_id=deliverable_doc.get("deliverable_id") if deliverable_doc else None,
-        deliverable_title=deliverable_doc.get("title") if deliverable_doc else None,
     )
     semester_name = promotion_reference.semester_name
     if not semester_name:
@@ -227,20 +206,10 @@ async def list_promotion_timelines():
             name = semester.get("name")
             if not semester_id or not name:
                 continue
-            deliverables = [
-                TimelineDeliverableOption(
-                    deliverable_id=str(deliverable.get("deliverable_id") or deliverable.get("id")),
-                    title=deliverable.get("title"),
-                    due_date=deliverable.get("due_date"),
-                )
-                for deliverable in sorted(semester.get("deliverables", []), key=lambda entry: entry.get("order", 0))
-                if deliverable.get("title")
-            ]
             semesters.append(
                 TimelineSemesterOption(
                     semester_id=str(semester_id),
                     name=name,
-                    deliverables=deliverables,
                 )
             )
         if semesters:
@@ -258,9 +227,8 @@ async def list_promotion_timelines():
 @jury_api.post("/juries", response_model=JuryResponse, summary="Creer un jury")
 async def create_jury(payload: JuryCreateRequest):
     members = await _build_members(payload)
-    deliverable_id = _normalize_optional_id(payload.deliverable_id)
     promotion_reference, semester_name = await _build_promotion_reference(
-        payload.promotion_id, payload.semester_id, deliverable_id
+        payload.promotion_id, payload.semester_id
     )
     now = datetime.utcnow()
     document = {
@@ -304,9 +272,8 @@ async def update_jury(jury_id: str, payload: JuryUpdateRequest):
     if payload.status is not None:
         updates["status"] = payload.status.value
 
-    deliverable_id = _normalize_optional_id(payload.deliverable_id)
     needs_timeline_update = any(
-        value is not None for value in (payload.promotion_id, payload.semester_id, deliverable_id)
+        value is not None for value in (payload.promotion_id, payload.semester_id)
     )
 
     if needs_timeline_update or not current_document.get("promotion_reference"):
@@ -316,7 +283,7 @@ async def update_jury(jury_id: str, payload: JuryUpdateRequest):
         if not promotion_id or not semester_id:
             raise HTTPException(status_code=400, detail="Promotion et semestre requis pour mettre a jour le jury")
         promotion_reference, semester_name = await _build_promotion_reference(
-            promotion_id, semester_id, deliverable_id or base_reference.get("deliverable_id")
+            promotion_id, semester_id
         )
         updates["promotion_reference"] = promotion_reference.model_dump()
         updates["semestre_reference"] = semester_name

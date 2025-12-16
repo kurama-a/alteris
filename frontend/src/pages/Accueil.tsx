@@ -94,6 +94,15 @@ const EVENT_CATEGORY_LABELS: Record<CalendarEventCategory, string> = {
   jury: "Jury",
 };
 
+function getApprenticeIdentifier(apprentice?: PromotionApprenticeRef | null): string | null {
+  if (!apprentice) {
+    return null;
+  }
+  const identifier =
+    apprentice._id ?? apprentice.id ?? apprentice.apprenti_id ?? apprentice.email ?? null;
+  return identifier ? String(identifier) : null;
+}
+
 function formatDateKey(date: Date): string {
   const copy = new Date(date);
   copy.setHours(0, 0, 0, 0);
@@ -217,56 +226,41 @@ export default function Accueil() {
       ),
     [normalizedRoles]
   );
-const hasGlobalPromotionSelector = React.useMemo(() => {
-  if (normalizedRoles.has("admin") || normalizedRoles.has("administrateur")) {
-    return true;
-  }
-  return Array.from(normalizedRoles).some(
-    (role) => role.includes("responsable") || role.includes("coordin")
-  );
-}, [normalizedRoles]);
-const requiresPromotionSelector = isTutorRole || hasGlobalPromotionSelector;
-const needsApprenticeSelector = isTutorRole || hasGlobalPromotionSelector;
+  const hasGlobalPromotionSelector = React.useMemo(() => {
+    if (normalizedRoles.has("admin") || normalizedRoles.has("administrateur")) {
+      return true;
+    }
+    return Array.from(normalizedRoles).some(
+      (role) => role.includes("responsable") || role.includes("coordin")
+    );
+  }, [normalizedRoles]);
+  const requiresPromotionSelector = isTutorRole || hasGlobalPromotionSelector;
+  const needsApprenticeSelector = isTutorRole || hasGlobalPromotionSelector;
 
   const accessiblePromotions = React.useMemo(() => {
     if (!promotions.length) {
       return [];
     }
-    if (isApprentice) {
-      const preferredPromo = me.anneeAcademique?.trim();
-      if (preferredPromo) {
-        const scopedPromotions = promotions.filter(
-          (promotion) =>
-            promotion.annee_academique &&
-            promotion.annee_academique.toLowerCase() === preferredPromo.toLowerCase()
-        );
-        if (scopedPromotions.length) {
-          return scopedPromotions;
-        }
-      }
-    }
-    if (isTutorRole) {
-      const filtered = promotions.filter((promotion) =>
-        (promotion.apprentis ?? []).some((apprentice) => {
-          const identifier =
-            apprentice._id ?? apprentice.id ?? apprentice.apprenti_id ?? apprentice.email;
-          return identifier ? supervisedApprenticeIds.has(String(identifier)) : false;
-        })
-      );
-      return filtered.length ? filtered : promotions;
-    }
     if (hasGlobalPromotionSelector) {
       return promotions;
     }
+    if (isTutorRole) {
+      return promotions.filter((promotion) =>
+        (promotion.apprentis ?? []).some((apprentice) => {
+          const identifier = getApprenticeIdentifier(apprentice);
+          return identifier ? supervisedApprenticeIds.has(identifier) : false;
+        })
+      );
+    }
+    if (isApprentice && me.id) {
+      return promotions.filter((promotion) =>
+        (promotion.apprentis ?? []).some(
+          (apprentice) => getApprenticeIdentifier(apprentice) === me.id
+        )
+      );
+    }
     return promotions;
-  }, [
-    promotions,
-    isApprentice,
-    me.anneeAcademique,
-    isTutorRole,
-    supervisedApprenticeIds,
-    hasGlobalPromotionSelector,
-  ]);
+  }, [promotions, hasGlobalPromotionSelector, isTutorRole, supervisedApprenticeIds, isApprentice, me.id]);
 
   const activePromotion = React.useMemo(() => {
     if (!accessiblePromotions.length) {
@@ -280,8 +274,25 @@ const needsApprenticeSelector = isTutorRole || hasGlobalPromotionSelector;
         accessiblePromotions.find((promotion) => promotion.id === selectedPromotionId) ?? null
       );
     }
+    if (isApprentice && me.id) {
+      const match = accessiblePromotions.find((promotion) =>
+        (promotion.apprentis ?? []).some(
+          (apprentice) => getApprenticeIdentifier(apprentice) === me.id
+        )
+      );
+      if (match) {
+        return match;
+      }
+    }
     return accessiblePromotions[0] ?? null;
-  }, [accessiblePromotions, requiresPromotionSelector, selectedPromotionId]);
+  }, [
+    accessiblePromotions,
+    requiresPromotionSelector,
+    selectedPromotionId,
+    isApprentice,
+    me.id,
+  ]);
+
 
   const apprenticeOptions = React.useMemo<ApprenticeOption[]>(() => {
     if (!activePromotion?.apprentis?.length) {
@@ -299,8 +310,7 @@ const needsApprenticeSelector = isTutorRole || hasGlobalPromotionSelector;
     const seen = new Set<string>();
     const options: ApprenticeOption[] = [];
     activePromotion.apprentis.forEach((apprentice) => {
-      const identifier =
-        apprentice._id ?? apprentice.id ?? apprentice.apprenti_id ?? apprentice.email;
+      const identifier = getApprenticeIdentifier(apprentice);
       if (!identifier || seen.has(identifier)) {
         return;
       }
@@ -445,10 +455,9 @@ const needsApprenticeSelector = isTutorRole || hasGlobalPromotionSelector;
     const ids = new Set<string>();
     if (activePromotion?.apprentis) {
       activePromotion.apprentis.forEach((apprentice) => {
-        const identifier =
-          apprentice._id ?? apprentice.id ?? apprentice.apprenti_id ?? apprentice.email;
+        const identifier = getApprenticeIdentifier(apprentice);
         if (identifier) {
-          ids.add(String(identifier));
+          ids.add(identifier);
         }
       });
     }

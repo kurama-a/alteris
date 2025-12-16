@@ -38,8 +38,6 @@ type JuryRecord = {
     label?: string;
     semester_id: string;
     semester_name: string;
-    deliverable_id?: string;
-    deliverable_title?: string;
   };
 };
 
@@ -50,7 +48,6 @@ type UsersResponse = {
 type JuryFormState = {
   promotionId: string;
   semesterId: string;
-  deliverableId: string;
   date: string;
   status: JuryStatus;
   tuteurId: string;
@@ -65,16 +62,9 @@ type JuryUserOption = {
   email?: string;
 };
 
-type TimelineDeliverableOption = {
-  deliverable_id: string;
-  title: string;
-  due_date?: string | null;
-};
-
 type TimelineSemesterOption = {
   semester_id: string;
   name: string;
-  deliverables: TimelineDeliverableOption[];
 };
 
 type PromotionTimelineOption = {
@@ -110,7 +100,6 @@ const emptyOptions = {
 const initialFormState: JuryFormState = {
   promotionId: "",
   semesterId: "",
-  deliverableId: "",
   date: "",
   status: "planifie",
   tuteurId: "",
@@ -132,7 +121,6 @@ function buildFormStateFromJury(jury: JuryRecord): JuryFormState {
   return {
     promotionId: promotionRef?.promotion_id ?? "",
     semesterId: promotionRef?.semester_id ?? "",
-    deliverableId: promotionRef?.deliverable_id ?? "",
     date: toDateTimeLocalInput(jury.date),
     status: jury.status,
     tuteurId: jury.members.tuteur.user_id,
@@ -295,7 +283,6 @@ export default function Juries() {
     () => availableSemesters.find((semester) => semester.semester_id === formDraft.semesterId),
     [availableSemesters, formDraft.semesterId]
   );
-  const availableDeliverables = selectedSemester?.deliverables ?? [];
   const editSelectedPromotion = React.useMemo(
     () => timelineOptions.find((option) => option.promotion_id === editFormDraft.promotionId),
     [timelineOptions, editFormDraft.promotionId]
@@ -306,7 +293,6 @@ export default function Juries() {
       editAvailableSemesters.find((semester) => semester.semester_id === editFormDraft.semesterId),
     [editAvailableSemesters, editFormDraft.semesterId]
   );
-  const editAvailableDeliverables = editSelectedSemester?.deliverables ?? [];
 
   const canChangeStatusForJury = React.useCallback(
     (jury: JuryRecord) => {
@@ -417,10 +403,10 @@ export default function Juries() {
   const handleFormChange = React.useCallback((key: keyof JuryFormState, value: string) => {
     setFormDraft((current) => {
       if (key === "promotionId") {
-        return { ...current, promotionId: value, semesterId: "", deliverableId: "" };
+        return { ...current, promotionId: value, semesterId: "" };
       }
       if (key === "semesterId") {
-        return { ...current, semesterId: value, deliverableId: "" };
+        return { ...current, semesterId: value };
       }
       return { ...current, [key]: value };
     });
@@ -431,10 +417,10 @@ export default function Juries() {
   const handleEditFormChange = React.useCallback((key: keyof JuryFormState, value: string) => {
     setEditFormDraft((current) => {
       if (key === "promotionId") {
-        return { ...current, promotionId: value, semesterId: "", deliverableId: "" };
+        return { ...current, promotionId: value, semesterId: "" };
       }
       if (key === "semesterId") {
-        return { ...current, semesterId: value, deliverableId: "" };
+        return { ...current, semesterId: value };
       }
       return { ...current, [key]: value };
     });
@@ -484,7 +470,6 @@ export default function Juries() {
           body: JSON.stringify({
             promotion_id: formDraft.promotionId,
             semester_id: formDraft.semesterId,
-            deliverable_id: formDraft.deliverableId || undefined,
             date: new Date(formDraft.date).toISOString(),
             status: formDraft.status,
             tuteur_id: formDraft.tuteurId,
@@ -535,7 +520,6 @@ export default function Juries() {
           body: JSON.stringify({
             promotion_id: editFormDraft.promotionId,
             semester_id: editFormDraft.semesterId,
-            deliverable_id: editFormDraft.deliverableId || undefined,
             date: new Date(editFormDraft.date).toISOString(),
             status: editFormDraft.status,
             tuteur_id: editFormDraft.tuteurId,
@@ -738,40 +722,6 @@ export default function Juries() {
                     </option>
                   ))}
                 </select>
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span>Livrable (optionnel)</span>
-                <select
-                  value={formDraft.deliverableId}
-                  onChange={(event) => handleFormChange("deliverableId", event.target.value)}
-                  style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5f5" }}
-                  disabled={!formDraft.semesterId || availableDeliverables.length === 0}
-                >
-                  <option value="">
-                    {availableDeliverables.length
-                      ? "Aucun livrable particulier"
-                      : "Aucun livrable défini"}
-                  </option>
-                  {availableDeliverables.map((deliverable) => (
-                    <option key={deliverable.deliverable_id} value={deliverable.deliverable_id}>
-                      {deliverable.title}
-                      {deliverable.due_date ? ` - ${deliverable.due_date}` : ""}
-                    </option>
-                  ))}
-                </select>
-                {formDraft.deliverableId && availableDeliverables.length > 0 ? (
-                  <small style={{ color: "#64748b" }}>
-                    {availableDeliverables.find(
-                      (deliverable) => deliverable.deliverable_id === formDraft.deliverableId
-                    )?.due_date
-                      ? `Échéance : ${
-                          availableDeliverables.find(
-                            (deliverable) => deliverable.deliverable_id === formDraft.deliverableId
-                          )?.due_date
-                        }`
-                      : "Aucune échéance définie pour ce livrable"}
-                  </small>
-                ) : null}
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span>Date et heure</span>
@@ -1008,11 +958,6 @@ export default function Juries() {
                         timeStyle: "short",
                       })}
                     </p>
-                    {jury.promotion_reference?.deliverable_title && (
-                      <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>
-                        Livrable ciblé : {jury.promotion_reference.deliverable_title}
-                      </p>
-                    )}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 200 }}>
                     <span
@@ -1156,26 +1101,6 @@ export default function Juries() {
                     {editAvailableSemesters.map((semester) => (
                       <option key={semester.semester_id} value={semester.semester_id}>
                         {semester.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>Livrable (optionnel)</span>
-                  <select
-                    value={editFormDraft.deliverableId}
-                    onChange={(event) => handleEditFormChange("deliverableId", event.target.value)}
-                    disabled={!editFormDraft.semesterId || editAvailableDeliverables.length === 0}
-                  >
-                    <option value="">
-                      {editAvailableDeliverables.length
-                        ? "Aucun livrable particulier"
-                        : "Aucun livrable défini"}
-                    </option>
-                    {editAvailableDeliverables.map((deliverable) => (
-                      <option key={deliverable.deliverable_id} value={deliverable.deliverable_id}>
-                        {deliverable.title}
-                        {deliverable.due_date ? ` - ${deliverable.due_date}` : ""}
                       </option>
                     ))}
                   </select>
