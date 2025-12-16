@@ -8,6 +8,7 @@ export type DocumentComment = {
   author_role: string;
   content: string;
   created_at: string;
+  updated_at?: string | null;
 };
 
 export type JournalDocumentRecord = {
@@ -54,6 +55,13 @@ export type DocumentUploadPayload = {
   file: File;
 };
 
+export type DocumentUpdatePayload = {
+  apprenticeId: string;
+  documentId: string;
+  uploaderId: string;
+  file: File;
+};
+
 export type DocumentCommentPayload = {
   apprenticeId: string;
   documentId: string;
@@ -61,6 +69,23 @@ export type DocumentCommentPayload = {
   authorName: string;
   authorRole: string;
   content: string;
+};
+
+export type DocumentCommentUpdatePayload = {
+  apprenticeId: string;
+  documentId: string;
+  commentId: string;
+  authorId: string;
+  authorRole: string;
+  content: string;
+};
+
+export type DocumentCommentDeletePayload = {
+  apprenticeId: string;
+  documentId: string;
+  commentId: string;
+  authorId: string;
+  authorRole: string;
 };
 
 async function fetchWithFormData<T>(
@@ -120,15 +145,14 @@ export async function uploadApprenticeDocument(
 }
 
 export async function updateApprenticeDocument(
-  apprenticeId: string,
-  documentId: string,
-  file: File,
+  payload: DocumentUpdatePayload,
   token?: string
 ) {
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", payload.file);
+  formData.append("uploader_id", payload.uploaderId);
   const result = await fetchWithFormData<{ document: JournalDocumentRecord }>(
-    `${APPRENTI_API_URL}/apprentis/${apprenticeId}/documents/${documentId}`,
+    `${APPRENTI_API_URL}/apprentis/${payload.apprenticeId}/documents/${payload.documentId}`,
     formData,
     token,
     "PUT"
@@ -151,4 +175,40 @@ export async function addDocumentComment(payload: DocumentCommentPayload, token?
     }
   );
   return result.comment;
+}
+
+export async function updateDocumentComment(
+  payload: DocumentCommentUpdatePayload,
+  token?: string
+) {
+  const result = await fetchJson<{ comment: DocumentComment }>(
+    `${APPRENTI_API_URL}/apprentis/${payload.apprenticeId}/documents/${payload.documentId}/comments/${payload.commentId}`,
+    {
+      method: "PUT",
+      token,
+      body: JSON.stringify({
+        author_id: payload.authorId,
+        author_role: payload.authorRole,
+        content: payload.content,
+      }),
+    }
+  );
+  return result.comment;
+}
+
+export async function deleteDocumentComment(
+  payload: DocumentCommentDeletePayload,
+  token?: string
+) {
+  await fetchJson<{ comment_id: string }>(
+    `${APPRENTI_API_URL}/apprentis/${payload.apprenticeId}/documents/${payload.documentId}/comments/${payload.commentId}`,
+    {
+      method: "DELETE",
+      token,
+      body: JSON.stringify({
+        author_id: payload.authorId,
+        author_role: payload.authorRole,
+      }),
+    }
+  );
 }

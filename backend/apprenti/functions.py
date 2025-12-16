@@ -347,7 +347,8 @@ async def creer_entretien(data):
         "sujet": data.sujet,
         "created_at": datetime.utcnow().isoformat(),
         "tuteur": tuteur,
-        "maitre": maitre
+        "maitre": maitre,
+        "note": None,
     }
     if jury:
         entretien["jury"] = jury
@@ -436,6 +437,59 @@ async def supprimer_entretien(apprenti_id: str, entretien_id: str):
             raise HTTPException(status_code=500, detail=f"Erreur lors de la suppression : {str(e)}")
 
 
+async def noter_entretien(apprenti_id: str, entretien_id: str, *, tuteur_id: str, note: float):
+    apprenti_collection = get_collection("apprenti")
+    tuteur_collection = get_collection("tuteur_pedagogique")
+    maitre_collection = get_collection("maitre_apprentissage")
+    jury_collection = get_collection("jury")
+
+    apprenti = await apprenti_collection.find_one({"_id": ObjectId(apprenti_id)})
+    if not apprenti:
+        raise HTTPException(status_code=404, detail="Apprenti introuvable")
+
+    tuteur_info = apprenti.get("tuteur") or {}
+    if str(tuteur_info.get("tuteur_id")) != tuteur_id:
+        raise HTTPException(status_code=403, detail="Seul le tuteur peut attribuer une note")
+
+    try:
+        note_value = float(note)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Note invalide")
+
+    if note_value < 0 or note_value > 20:
+        raise HTTPException(status_code=400, detail="La note doit etre comprise entre 0 et 20")
+    note_value = round(note_value, 2)
+
+    result = await apprenti_collection.update_one(
+        {"_id": ObjectId(apprenti_id), "entretiens.entretien_id": entretien_id},
+        {"$set": {"entretiens.$.note": note_value}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Entretien introuvable")
+
+    if tuteur_info.get("tuteur_id"):
+        await tuteur_collection.update_one(
+            {"_id": ObjectId(tuteur_info["tuteur_id"]), "entretiens.entretien_id": entretien_id},
+            {"$set": {"entretiens.$.note": note_value}},
+        )
+
+    maitre_info = apprenti.get("maitre") or {}
+    if maitre_info.get("maitre_id"):
+        await maitre_collection.update_one(
+            {"_id": ObjectId(maitre_info["maitre_id"]), "entretiens.entretien_id": entretien_id},
+            {"$set": {"entretiens.$.note": note_value}},
+        )
+
+    jury_info = apprenti.get("jury") or {}
+    if jury_info.get("jury_id"):
+        await jury_collection.update_one(
+            {"_id": ObjectId(jury_info["jury_id"]), "entretiens.entretien_id": entretien_id},
+            {"$set": {"entretiens.$.note": note_value}},
+        )
+
+    return {"entretien_id": entretien_id, "note": note_value}
+
+
 def _documents_collection():
     if database.db is None:
         raise HTTPException(status_code=500, detail="Connexion DB absente")
@@ -446,6 +500,40 @@ def _promotion_collection():
     if database.db is None:
         raise HTTPException(status_code=500, detail="Connexion DB absente")
     return database.db["promos"]
+
+
+def _snake_to_camel_case(key: str) -> str:
+    parts = key.split("_")
+    if not parts:
+        return key
+    return parts[0] + "".join(word.capitalize() for word in parts[1:])
+
+
+def _extract_semester_date(semester: Dict[str, Any], key: str) -> Optional[str]:
+    candidates = [key]
+    camel_key = _snake_to_camel_case(key)
+    compact_key = key.replace("_", "")
+    if camel_key not in candidates:
+        candidates.append(camel_key)
+    if compact_key not in candidates:
+        candidates.append(compact_key)
+    for candidate in candidates:
+        value = semester.get(candidate)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _parse_iso_date(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        try:
+            return datetime.strptime(value, "%Y-%m-%d")
+        except ValueError:
+            return None
 
 
 def _allowed_extensions(category: str) -> List[str]:
@@ -614,6 +702,10 @@ async def create_journal_document(
     upload: UploadFile,
 ) -> Dict[str, Any]:
     apprenti, promotion = await _retrieve_apprenti_and_promotion(apprenti_id)
+    if uploader_id != apprenti_id:
+        raise HTTPException(
+            status_code=403, detail="Seul l'apprenti peut deposer un document pour ce journal"
+        )
     semester_id = semester_id.strip()
     if not semester_id:
         raise HTTPException(status_code=400, detail="Semestre requis")
@@ -660,6 +752,8 @@ async def create_journal_document(
 async def update_journal_document(
     apprenti_id: str,
     document_id: str,
+    *,
+    uploader_id: str,
     upload: UploadFile,
 ) -> Dict[str, Any]:
     documents_collection = _documents_collection()
@@ -668,6 +762,10 @@ async def update_journal_document(
         raise HTTPException(status_code=404, detail="Document introuvable")
     if document.get("apprentice_id") != apprenti_id:
         raise HTTPException(status_code=403, detail="Document non associe a cet apprenti")
+    if uploader_id != apprenti_id:
+        raise HTTPException(
+            status_code=403, detail="Seul l'apprenti peut modifier un document de ce journal"
+        )
 
     allowed_extensions = _allowed_extensions(document.get("category"))
     original_name = upload.filename or document.get("file_name") or "document"
@@ -738,6 +836,77 @@ async def add_document_comment(
     return comment
 
 
+async def update_document_comment(
+    apprenti_id: str,
+    document_id: str,
+    comment_id: str,
+    *,
+    author_id: str,
+    author_role: str,
+    content: str,
+) -> Dict[str, Any]:
+    document = await _documents_collection().find_one({"_id": ObjectId(document_id)})
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    if document.get("apprentice_id") != apprenti_id:
+        raise HTTPException(status_code=403, detail="Document non associe a cet apprenti")
+
+    normalized_role = author_role.lower()
+    if normalized_role not in COMMENTER_ROLES:
+        raise HTTPException(status_code=403, detail="Ce role ne peut pas modifier les commentaires")
+    message = content.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Commentaire vide")
+
+    comments = document.get("comments") or []
+    target = next((entry for entry in comments if entry.get("comment_id") == comment_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Commentaire introuvable")
+    if target.get("author_id") != author_id:
+        raise HTTPException(status_code=403, detail="Vous ne pouvez modifier que vos commentaires")
+
+    updated_at = datetime.utcnow()
+    await _documents_collection().update_one(
+        {"_id": document["_id"], "comments.comment_id": comment_id},
+        {"$set": {"comments.$.content": message, "comments.$.updated_at": updated_at}},
+    )
+    target["content"] = message
+    target["updated_at"] = updated_at
+    return target
+
+
+async def delete_document_comment(
+    apprenti_id: str,
+    document_id: str,
+    comment_id: str,
+    *,
+    author_id: str,
+    author_role: str,
+) -> str:
+    document = await _documents_collection().find_one({"_id": ObjectId(document_id)})
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    if document.get("apprentice_id") != apprenti_id:
+        raise HTTPException(status_code=403, detail="Document non associe a cet apprenti")
+
+    normalized_role = author_role.lower()
+    if normalized_role not in COMMENTER_ROLES:
+        raise HTTPException(status_code=403, detail="Ce role ne peut pas supprimer les commentaires")
+
+    comments = document.get("comments") or []
+    target = next((entry for entry in comments if entry.get("comment_id") == comment_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Commentaire introuvable")
+    if target.get("author_id") != author_id:
+        raise HTTPException(status_code=403, detail="Vous ne pouvez supprimer que vos commentaires")
+
+    await _documents_collection().update_one(
+        {"_id": document["_id"]},
+        {"$pull": {"comments": {"comment_id": comment_id}}},
+    )
+    return comment_id
+
+
 async def get_document_file(document_id: str) -> tuple[Path, str, str]:
     document = await _documents_collection().find_one({"_id": ObjectId(document_id)})
     if not document:
@@ -764,6 +933,7 @@ async def list_competency_evaluations(apprenti_id: str) -> Dict[str, Any]:
     stored_evaluations: Dict[str, Dict[str, str]] = record.get("evaluations", {}) if record else {}
 
     semesters_payload = []
+    today = datetime.utcnow().date()
     for semester in sorted(promotion.get("semesters", []), key=lambda entry: entry.get("order", 0)):
         semester_id = _normalize_semester_id(semester.get("semester_id") or semester.get("id"))
         if not semester_id:
@@ -776,11 +946,31 @@ async def list_competency_evaluations(apprenti_id: str) -> Dict[str, Any]:
             }
             for definition in COMPETENCY_DEFINITIONS
         ]
+        start_date = _extract_semester_date(semester, "start_date")
+        end_date = _extract_semester_date(semester, "end_date")
+        start_dt = _parse_iso_date(start_date)
+        end_dt = _parse_iso_date(end_date)
+        is_active = False
+        if start_dt and end_dt:
+            is_active = start_dt.date() <= today <= end_dt.date()
+        elif start_dt:
+            is_active = start_dt.date() <= today
+        elif end_dt:
+            is_active = today <= end_dt.date()
+        status = "open" if is_active else "upcoming"
+        if end_dt and today > end_dt.date():
+            status = "closed"
+        elif start_dt and today < start_dt.date():
+            status = "upcoming"
         semesters_payload.append(
             {
                 "semester_id": semester_id,
                 "name": semester.get("name") or semester_id,
                 "competencies": competencies_payload,
+                "start_date": start_date,
+                "end_date": end_date,
+                "is_active": is_active,
+                "status": status,
             }
         )
 

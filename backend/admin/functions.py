@@ -46,6 +46,30 @@ ROLE_REFERENCES = {
 }
 
 
+def _snake_to_camel_case(key: str) -> str:
+    parts = key.split("_")
+    if not parts:
+        return key
+    return parts[0] + "".join(word.capitalize() for word in parts[1:])
+
+
+def _extract_semester_value(raw: dict, key: str):
+    if not isinstance(raw, dict):
+        return None
+    candidates = [key]
+    camel_key = _snake_to_camel_case(key)
+    compact_key = key.replace("_", "")
+    if camel_key not in candidates:
+        candidates.append(camel_key)
+    if compact_key not in candidates:
+        candidates.append(compact_key)
+    for candidate in candidates:
+        value = raw.get(candidate)
+        if value not in (None, ""):
+            return value
+    return None
+
+
 def _serialize_semesters(raw_semesters):
     serialized = []
     if not raw_semesters:
@@ -66,8 +90,8 @@ def _serialize_semesters(raw_semesters):
         serialized.append({
             "semester_id": raw.get("semester_id") or raw.get("id"),
             "name": name,
-            "start_date": raw.get("start_date"),
-            "end_date": raw.get("end_date"),
+            "start_date": _extract_semester_value(raw, "start_date"),
+            "end_date": _extract_semester_value(raw, "end_date"),
             "order": raw.get("order", 0),
             "deliverables": deliverables,
         })

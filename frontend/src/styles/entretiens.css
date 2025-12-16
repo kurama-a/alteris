@@ -1,0 +1,160 @@
+.entretiens-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.entretien-card {
+  background: #ffffff;
+  border-radius: 20px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 18px 36px -20px rgba(15, 23, 42, 0.4);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.entretien-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.entretien-card-date {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6366f1;
+}
+
+.entretien-card-title {
+  margin: 4px 0 0;
+  font-size: 1.15rem;
+  color: #0f172a;
+}
+
+.entretien-card-meta {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.entretien-delete {
+  border: none;
+  background: transparent;
+  color: #dc2626;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.entretien-delete:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.entretien-card-body {
+  border-top: 1px solid #eef2ff;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.entretien-contact {
+  padding: 8px 0;
+  border-bottom: 1px solid #eef2ff;
+}
+
+.entretien-contact:last-child {
+  border-bottom: none;
+}
+
+.entretien-contact-label {
+  margin: 0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6366f1;
+}
+
+.entretien-contact-name {
+  margin: 4px 0;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.entretien-contact-line {
+  margin: 0;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.entretien-note-section {
+  padding: 12px 0;
+  border-top: 1px solid #eef2ff;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.entretien-note-label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+}
+
+.entretien-note-inputs {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.entretien-note-inputs input {
+  width: 90px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #cbd5f5;
+  font-weight: 600;
+}
+
+.entretien-note-inputs button {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.entretien-note-inputs button:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.entretien-note-display {
+  margin: 0;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.entretien-note-hint {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+@media (max-width: 640px) {
+  .entretien-card {
+    padding: 16px;
+  }
+
+  .entretien-note-inputs {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

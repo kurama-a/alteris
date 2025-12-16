@@ -435,16 +435,31 @@ body{
 .documents-link,
 .documents-delete{
   font-size:12px;
-  text-decoration:none;
   border:none;
   background:none;
   cursor:pointer;
   padding:0;
+  text-decoration:none;
 }
 .documents-link{
-  color:var(--primary);
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 14px;
+  border-radius:999px;
+  border:1px solid #2563eb;
+  background:#2563eb;
+  color:#fff;
+  font-weight:600;
+  transition:background 0.2s ease, transform 0.2s ease;
 }
-.documents-link:hover{text-decoration:underline;}
+.documents-link:hover{
+  background:#1d4ed8;
+  transform:translateY(-1px);
+}
+.documents-delete{
+  color:#dc2626;
+}
 .documents-delete{
   color:#dc2626;
 }
@@ -453,6 +468,12 @@ body{
   margin-top:16px;
   font-size:12px;
   color:var(--text);
+}
+.documents-readonly-note{
+  margin:0;
+  padding:8px 0;
+  font-size:0.9rem;
+  color:#475569;
 }
 
 .documents-comments{
@@ -481,6 +502,62 @@ body{
   border:1px solid #e5e7eb;
   border-radius:10px;
   padding:10px;
+}
+.documents-comment-edit{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  margin-top:8px;
+}
+.documents-comment-edit textarea{
+  border:1px solid #cbd5f5;
+  border-radius:8px;
+  padding:8px;
+  font-family:inherit;
+  resize:vertical;
+}
+.documents-comment-edit-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+}
+.documents-comment-edit-actions button{
+  border:none;
+  border-radius:8px;
+  padding:6px 12px;
+  cursor:pointer;
+  font-weight:600;
+  background:#2563eb;
+  color:#fff;
+}
+.documents-comment-edit-actions button.secondary{
+  background:#fff;
+  border:1px solid #cbd5f5;
+  color:#1e293b;
+}
+.documents-comment-edit-actions button:disabled{
+  opacity:0.7;
+  cursor:not-allowed;
+}
+.documents-comment-actions{
+  display:flex;
+  gap:10px;
+  margin-top:6px;
+}
+.documents-comment-actions button{
+  border:none;
+  background:none;
+  color:#2563eb;
+  cursor:pointer;
+  font-size:0.85rem;
+  padding:0;
+}
+.documents-comment-actions button.danger{
+  color:#dc2626;
+}
+.documents-comment-actions button:disabled{
+  color:#94a3b8;
+  cursor:not-allowed;
 }
 .comment-header{
   display:flex;

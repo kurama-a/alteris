@@ -42,6 +42,8 @@ export default function Journal() {
     uploadApprenticeDocument: uploadDocumentApi,
     updateApprenticeDocument: updateDocumentApi,
     addDocumentComment: addCommentApi,
+    updateDocumentComment: editCommentApi,
+    deleteDocumentComment: deleteCommentApi,
     getDownloadUrl,
   } = useDocuments();
   const [remoteJournals, setRemoteJournals] = React.useState<Record<string, ApprenticeJournal>>({});
@@ -180,6 +182,9 @@ export default function Journal() {
   const [uploadingDocumentKey, setUploadingDocumentKey] = React.useState<string | null>(null);
   const [commentInputs, setCommentInputs] = React.useState<Record<string, string>>({});
   const [commentBusyMap, setCommentBusyMap] = React.useState<Record<string, boolean>>({});
+  const [commentEditValues, setCommentEditValues] = React.useState<Record<string, string>>({});
+  const [commentEditBusyMap, setCommentEditBusyMap] = React.useState<Record<string, boolean>>({});
+  const [commentDeleteBusyMap, setCommentDeleteBusyMap] = React.useState<Record<string, boolean>>({});
 
   React.useEffect(() => {
     if (selectableApprentices.length === 0) {
@@ -236,9 +241,14 @@ export default function Journal() {
     return me.fullName || `${me.firstName ?? ""} ${me.lastName ?? ""}`.trim() || me.email || me.id;
   }, [me.fullName, me.firstName, me.lastName, me.email, me.id]);
 
+  const canEditDocuments = React.useMemo(() => {
+    if (!selectedId) return false;
+    return selectedId === me.id;
+  }, [me.id, selectedId]);
+
   const handleUploadForSemester = React.useCallback(
     async (semesterId: string, category: DocumentCategory, file: File) => {
-      if (!selectedId || !token) return;
+      if (!selectedId || !token || !canEditDocuments) return;
       const key = `${semesterId}-${category}`;
       setUploadingDocumentKey(key);
       setDocumentsError(null);
@@ -264,17 +274,25 @@ export default function Journal() {
         setUploadingDocumentKey(null);
       }
     },
-    [loadDocuments, me.id, me.role, selectedId, token, uploadDocumentApi, uploaderName]
+    [canEditDocuments, loadDocuments, me.id, me.role, selectedId, token, uploadDocumentApi, uploaderName]
   );
 
   const handleReplaceDocument = React.useCallback(
     async (documentId: string, semesterId: string, category: DocumentCategory, file: File) => {
-      if (!selectedId || !token) return;
+      if (!selectedId || !token || !canEditDocuments) return;
       const key = `${semesterId}-${category}`;
       setUploadingDocumentKey(key);
       setDocumentsError(null);
       try {
-        await updateDocumentApi(selectedId, documentId, file, token);
+        await updateDocumentApi(
+          {
+            apprenticeId: selectedId,
+            documentId,
+            uploaderId: me.id,
+            file,
+          },
+          token
+        );
         await loadDocuments();
       } catch (error) {
         const message =
@@ -284,11 +302,27 @@ export default function Journal() {
         setUploadingDocumentKey(null);
       }
     },
-    [loadDocuments, selectedId, token, updateDocumentApi]
+    [canEditDocuments, loadDocuments, me.id, selectedId, token, updateDocumentApi]
   );
 
   const handleCommentChange = React.useCallback((documentId: string, value: string) => {
     setCommentInputs((current) => ({ ...current, [documentId]: value }));
+  }, []);
+
+  const handleCommentEditChange = React.useCallback((commentId: string, value: string) => {
+    setCommentEditValues((current) => ({ ...current, [commentId]: value }));
+  }, []);
+
+  const beginCommentEdit = React.useCallback((commentId: string, content: string) => {
+    setCommentEditValues((current) => ({ ...current, [commentId]: content }));
+  }, []);
+
+  const cancelCommentEdit = React.useCallback((commentId: string) => {
+    setCommentEditValues((current) => {
+      const next = { ...current };
+      delete next[commentId];
+      return next;
+    });
   }, []);
 
   const handleCommentSubmit = React.useCallback(
@@ -323,6 +357,80 @@ export default function Journal() {
       }
     },
     [addCommentApi, commentInputs, loadDocuments, me.id, me.role, selectedId, token, uploaderName]
+  );
+
+  const handleUpdateExistingComment = React.useCallback(
+    async (documentId: string, commentId: string) => {
+      if (!selectedId || !token) return;
+      const draft = (commentEditValues[commentId] ?? "").trim();
+      if (!draft) {
+        setDocumentsError("Le commentaire ne peut pas être vide.");
+        return;
+      }
+      setCommentEditBusyMap((current) => ({ ...current, [commentId]: true }));
+      setDocumentsError(null);
+      try {
+        await editCommentApi(
+          {
+            apprenticeId: selectedId,
+            documentId,
+            commentId,
+            authorId: me.id,
+            authorRole: me.role ?? "apprenti",
+            content: draft,
+          },
+          token
+        );
+        setCommentEditValues((current) => {
+          const next = { ...current };
+          delete next[commentId];
+          return next;
+        });
+        await loadDocuments();
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Impossible de modifier le commentaire.";
+        setDocumentsError(message);
+      } finally {
+        setCommentEditBusyMap((current) => ({ ...current, [commentId]: false }));
+      }
+    },
+    [commentEditValues, editCommentApi, loadDocuments, me.id, me.role, selectedId, token]
+  );
+
+  const handleDeleteExistingComment = React.useCallback(
+    async (documentId: string, commentId: string) => {
+      if (!selectedId || !token) return;
+      const confirmation = window.confirm("Voulez-vous supprimer ce commentaire ?");
+      if (!confirmation) return;
+      setCommentDeleteBusyMap((current) => ({ ...current, [commentId]: true }));
+      setDocumentsError(null);
+      try {
+        await deleteCommentApi(
+          {
+            apprenticeId: selectedId,
+            documentId,
+            commentId,
+            authorId: me.id,
+            authorRole: me.role ?? "apprenti",
+          },
+          token
+        );
+        setCommentEditValues((current) => {
+          const next = { ...current };
+          delete next[commentId];
+          return next;
+        });
+        await loadDocuments();
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Impossible de supprimer le commentaire.";
+        setDocumentsError(message);
+      } finally {
+        setCommentDeleteBusyMap((current) => ({ ...current, [commentId]: false }));
+      }
+    },
+    [deleteCommentApi, loadDocuments, me.id, me.role, selectedId, token]
   );
 
   const handleFileInputChange = React.useCallback(
@@ -679,21 +787,23 @@ export default function Journal() {
                             >
                               Télécharger
                             </a>
-                            <label className="documents-upload inline-upload">
-                              <span className="documents-upload-button">
-                                {isUploading ? "Import..." : "Remplacer"}
-                              </span>
-                              <input
-                                type="file"
-                                accept={definition.accept}
-                                onChange={handleFileInputChange(
-                                  semester.semester_id,
-                                  definition.id,
-                                  "update",
-                                  record.id
-                                )}
-                              />
-                            </label>
+                            {canEditDocuments ? (
+                              <label className="documents-upload inline-upload">
+                                <span className="documents-upload-button">
+                                  {isUploading ? "Import..." : "Remplacer"}
+                                </span>
+                                <input
+                                  type="file"
+                                  accept={definition.accept}
+                                  onChange={handleFileInputChange(
+                                    semester.semester_id,
+                                    definition.id,
+                                    "update",
+                                    record.id
+                                  )}
+                                />
+                              </label>
+                            ) : null}
                           </div>
                           <div className="documents-comments">
                             <h4>Commentaires</h4>
@@ -701,20 +811,85 @@ export default function Journal() {
                               <p className="documents-empty">Pas encore de commentaires.</p>
                             ) : (
                               <ul className="documents-comments-list">
-                                {record.comments.map((comment) => (
-                                  <li key={comment.comment_id}>
-                                    <div className="comment-header">
-                                      <strong>{comment.author_name}</strong>
-                                      <span>
-                                        {new Date(comment.created_at).toLocaleString("fr-FR", {
-                                          dateStyle: "short",
-                                          timeStyle: "short",
-                                        })}
-                                      </span>
-                                    </div>
-                                    <p>{comment.content}</p>
-                                  </li>
-                                ))}
+                                {record.comments.map((comment) => {
+                                  const isAuthor = comment.author_id === me.id;
+                                  const isEditingComment = Object.prototype.hasOwnProperty.call(
+                                    commentEditValues,
+                                    comment.comment_id
+                                  );
+                                  const editValue = commentEditValues[comment.comment_id] ?? "";
+                                  const isUpdating = Boolean(commentEditBusyMap[comment.comment_id]);
+                                  const isDeleting = Boolean(commentDeleteBusyMap[comment.comment_id]);
+                                  return (
+                                    <li key={comment.comment_id}>
+                                      <div className="comment-header">
+                                        <strong>{comment.author_name}</strong>
+                                        <span>
+                                          {new Date(comment.created_at).toLocaleString("fr-FR", {
+                                            dateStyle: "short",
+                                            timeStyle: "short",
+                                          })}
+                                        </span>
+                                      </div>
+                                      {isEditingComment ? (
+                                        <div className="documents-comment-edit">
+                                          <textarea
+                                            rows={2}
+                                            value={editValue}
+                                            onChange={(event) =>
+                                              handleCommentEditChange(comment.comment_id, event.target.value)
+                                            }
+                                          />
+                                          <div className="documents-comment-edit-actions">
+                                            <button
+                                              type="button"
+                                              disabled={isUpdating}
+                                              onClick={() =>
+                                                handleUpdateExistingComment(record.id, comment.comment_id)
+                                              }
+                                            >
+                                              {isUpdating ? "Enregistrement..." : "Enregistrer"}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="secondary"
+                                              disabled={isUpdating}
+                                              onClick={() => cancelCommentEdit(comment.comment_id)}
+                                            >
+                                              Annuler
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <p>{comment.content}</p>
+                                      )}
+                                      {isAuthor ? (
+                                        <div className="documents-comment-actions">
+                                          {!isEditingComment ? (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                beginCommentEdit(comment.comment_id, comment.content)
+                                              }
+                                            >
+                                              Modifier
+                                            </button>
+                                          ) : null}
+                                          <button
+                                            type="button"
+                                            className="danger"
+                                            disabled={isDeleting}
+                                            onClick={() =>
+                                              handleDeleteExistingComment(record.id, comment.comment_id)
+                                            }
+                                          >
+                                            {isDeleting ? "Suppression..." : "Supprimer"}
+                                          </button>
+                                        </div>
+                                      ) : null}
+                                    </li>
+                                  );
+                                })}
                               </ul>
                             )}
                             {canCommentDocuments ? (
@@ -738,7 +913,7 @@ export default function Journal() {
                             ) : null}
                           </div>
                         </>
-                      ) : (
+                      ) : canEditDocuments ? (
                         <label className="documents-upload">
                           <span className="documents-upload-button">
                             {isUploading ? "Import..." : "Déposer un fichier"}
@@ -753,6 +928,10 @@ export default function Journal() {
                             )}
                           />
                         </label>
+                      ) : (
+                        <p className="documents-readonly-note">
+                          Aucun document déposé pour le moment.
+                        </p>
                       )}
                     </article>
                   );
