@@ -40,6 +40,7 @@ DOCUMENT_DEFINITIONS = [
 
 DOCUMENT_COLLECTION_NAME = "journal_documents"
 DOCUMENT_STORAGE = Path(__file__).resolve().parent / "storage" / "journal_documents"
+DEFAULT_FILE_EXTENSIONS = [".pdf", ".ppt", ".pptx", ".doc", ".docx"]
 
 COMPETENCY_DEFINITIONS = [
     {
@@ -448,10 +449,16 @@ def _promotion_collection():
 
 
 def _allowed_extensions(category: str) -> List[str]:
+    normalized = (category or "").strip().lower()
+    if not normalized:
+        return DEFAULT_FILE_EXTENSIONS
     for definition in DOCUMENT_DEFINITIONS:
-        if definition["id"] == category:
+        if definition["id"].lower() == normalized:
             return definition["extensions"]
-    raise HTTPException(status_code=400, detail="Categorie de document inconnue")
+    for definition in DOCUMENT_DEFINITIONS:
+        if definition["label"].lower() == normalized:
+            return definition["extensions"]
+    return DEFAULT_FILE_EXTENSIONS
 
 
 def _deliverable_definition(deliverable: Dict[str, Any]) -> Dict[str, Any]:
@@ -612,6 +619,9 @@ async def create_journal_document(
         raise HTTPException(status_code=400, detail="Semestre requis")
     _resolve_semester(promotion, semester_id)
 
+    category = category.strip()
+    if not category:
+        raise HTTPException(status_code=400, detail="Categorie requise")
     allowed_extensions = _allowed_extensions(category)
     original_name = upload.filename or "document"
     extension = Path(original_name).suffix.lower()
