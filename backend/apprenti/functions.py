@@ -504,6 +504,38 @@ def _normalize_semester_id(raw: Any) -> str:
     return str(raw) if raw is not None else ""
 
 
+def _parse_iso_date(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    value = str(value).strip()
+    if not value:
+        return None
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
+        try:
+            return datetime.strptime(value, fmt)
+        except Exception:
+            continue
+    try:
+        return datetime.fromisoformat(value)
+    except Exception:
+        return None
+
+
+def _find_deliverable_for_semester(promotion: Dict[str, Any], semester_id: str, key: str) -> Optional[Dict[str, Any]]:
+    """Retourne le dict du livrable pour le semestre si le champ deliverable_id/id/title correspond à la clé fournie."""
+    for semester in promotion.get("semesters", []):
+        current_id = _normalize_semester_id(semester.get("semester_id") or semester.get("id"))
+        if current_id != semester_id:
+            continue
+        for deliverable in semester.get("deliverables", []) or []:
+            if str(deliverable.get("deliverable_id") or deliverable.get("id") or "") == str(key):
+                return deliverable
+            # fallback: match by title (some older records)
+            if str(deliverable.get("title") or "") == str(key):
+                return deliverable
+    return None
+
+
 def _serialize_document(document: Dict[str, Any]) -> Dict[str, Any]:
     doc_id = str(document["_id"])
     comments = [
@@ -606,24 +638,40 @@ async def create_journal_document(
     uploader_role: str,
     upload: UploadFile,
 ) -> Dict[str, Any]:
+    # Récupère l'apprenti et la promotion associée (nécessaire pour valider semestre, stockage)
     apprenti, promotion = await _retrieve_apprenti_and_promotion(apprenti_id)
     semester_id = semester_id.strip()
     if not semester_id:
         raise HTTPException(status_code=400, detail="Semestre requis")
     _resolve_semester(promotion, semester_id)
 
+    # Empêche le dépôt si un livrable correspondant à cette catégorie/ID existe
+    # pour le semestre et que sa date d'echeance est depassee.
+    matching = _find_deliverable_for_semester(promotion, semester_id, category)
+    if matching:
+        due_val = matching.get("due_date")
+        due_dt = _parse_iso_date(due_val)
+        if due_dt and datetime.utcnow() > due_dt:
+            raise HTTPException(status_code=400, detail=f"Depot refuse : livrable '{matching.get('title') or category}' ferme depuis {due_val}")
+    # Vérifie l'extension autorisée pour la catégorie de document
     allowed_extensions = _allowed_extensions(category)
     original_name = upload.filename or "document"
     extension = Path(original_name).suffix.lower()
     if extension not in allowed_extensions:
+        # Rejette le fichier si l'extension n'est pas dans la liste blanche
         raise HTTPException(status_code=400, detail="Extension de fichier non autorisee pour ce type")
 
+    # Génère un nouvel identifiant pour le document et prépare le chemin de stockage
     document_id = ObjectId()
     promotion_id = str(promotion["_id"])
     file_path = _build_storage_path(promotion_id, semester_id, str(document_id), extension)
+
+    # Écrit le fichier reçu sur le disque dans l'emplacement prévu
+    # Utilise un write binaire et copie le flux pour éviter de charger tout le fichier en mémoire
     with file_path.open("wb") as buffer:
         shutil.copyfileobj(upload.file, buffer)
 
+    # Construit l'enregistrement qui sera inséré en base de données pour référencer le fichier
     document_record = {
         "_id": document_id,
         "apprentice_id": apprenti_id,
@@ -634,6 +682,7 @@ async def create_journal_document(
         "file_name": original_name,
         "file_size": file_path.stat().st_size,
         "file_type": upload.content_type or "application/octet-stream",
+        # On stocke le chemin relatif pour faciliter les moves de `DOCUMENT_STORAGE`
         "file_path": str(file_path.relative_to(DOCUMENT_STORAGE)),
         "uploaded_at": datetime.utcnow(),
         "uploader": {
@@ -643,7 +692,10 @@ async def create_journal_document(
         },
         "comments": [],
     }
+
+    # Insert le méta-document en base (le fichier est déjà écrit sur disque)
     await _documents_collection().insert_one(document_record)
+    # Retourne la représentation sérialisée côté API
     return _serialize_document(document_record)
 
 
@@ -659,6 +711,15 @@ async def update_journal_document(
     if document.get("apprentice_id") != apprenti_id:
         raise HTTPException(status_code=403, detail="Document non associe a cet apprenti")
 
+    # Bloque la mise a jour du document si le livrable associe au semestre a une date d'echeance depassee
+    promo_apprenti, promotion = await _retrieve_apprenti_and_promotion(apprenti_id)
+    matching = _find_deliverable_for_semester(promotion, document.get("semester_id"), document.get("category"))
+    if matching:
+        due_val = matching.get("due_date")
+        due_dt = _parse_iso_date(due_val)
+        if due_dt and datetime.utcnow() > due_dt:
+            raise HTTPException(status_code=400, detail=f"Mise a jour refusee : livrable '{matching.get('title') or document.get('category')}' ferme depuis {due_val}")
+
     allowed_extensions = _allowed_extensions(document.get("category"))
     original_name = upload.filename or document.get("file_name") or "document"
     extension = Path(original_name).suffix.lower()
@@ -668,17 +729,18 @@ async def update_journal_document(
     promotion_id = document.get("promotion_id")
     semester_id = document.get("semester_id")
     file_path = _build_storage_path(promotion_id, semester_id, document_id, extension)
-
+    # Écrit le nouveau fichier sur le disque (remplace l'ancien fichier)
     with file_path.open("wb") as buffer:
         shutil.copyfileobj(upload.file, buffer)
 
-    # Supprime l'ancien fichier si le chemin change
+    # Si un ancien fichier était présent, on le supprime pour éviter de laisser des orphelins
     previous_relative_path = document.get("file_path")
     if previous_relative_path:
         old_path = DOCUMENT_STORAGE / previous_relative_path
         if old_path.exists() and old_path != file_path:
             old_path.unlink(missing_ok=True)
 
+    # Met à jour les métadonnées du document en base (taille, type, chemin, date)
     updates = {
         "file_name": original_name,
         "file_size": file_path.stat().st_size,

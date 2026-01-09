@@ -199,6 +199,49 @@ async def _build_promotion_reference(
     return promotion_reference, semester_name
 
 
+def _parse_iso_date(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    # Try several ISO-like formats
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
+        try:
+            return datetime.strptime(value, fmt)
+        except Exception:
+            continue
+    try:
+        # last resort, let fromisoformat handle offsets etc.
+        return datetime.fromisoformat(value)
+    except Exception:
+        return None
+
+
+async def _ensure_deliverable_open(promotion_id: str, semester_id: str, deliverable_id: Optional[str]):
+    """Raise HTTPException(400) if the deliverable's due_date is present and already passed.
+
+    This helper is generic — call it from any endpoint that accepts a `promotion_id`/`semester_id`
+    and an optional `deliverable_id` to enforce that submissions or actions are refused after
+    the configured due date.
+    """
+    if not deliverable_id:
+        return
+    promotion_doc = await _load_promotion_document(promotion_id)
+    semester = _match_semester(promotion_doc, semester_id)
+    deliverable = _match_deliverable(semester, deliverable_id)
+    due_value = deliverable.get("due_date") if deliverable else None
+    if not due_value:
+        return
+    due_dt = _parse_iso_date(due_value)
+    if not due_dt:
+        # malformed date -> be permissive (or change to strict error if desired)
+        return
+    now = datetime.utcnow()
+    if now > due_dt:
+        raise HTTPException(status_code=400, detail=f"Livrable fermé : date d'echeance {due_value} depassee")
+
+
 @jury_api.get("/profile")
 def get_profile():
     return {"message": "Donnees du profil jury"}
@@ -259,6 +302,8 @@ async def list_promotion_timelines():
 async def create_jury(payload: JuryCreateRequest):
     members = await _build_members(payload)
     deliverable_id = _normalize_optional_id(payload.deliverable_id)
+    # Verify deliverable is still open before creating the jury (if deliverable specified)
+    await _ensure_deliverable_open(payload.promotion_id, payload.semester_id, deliverable_id)
     promotion_reference, semester_name = await _build_promotion_reference(
         payload.promotion_id, payload.semester_id, deliverable_id
     )
@@ -315,6 +360,8 @@ async def update_jury(jury_id: str, payload: JuryUpdateRequest):
         semester_id = payload.semester_id or base_reference.get("semester_id")
         if not promotion_id or not semester_id:
             raise HTTPException(status_code=400, detail="Promotion et semestre requis pour mettre a jour le jury")
+        # Ensure the selected deliverable (if any) is not expired
+        await _ensure_deliverable_open(promotion_id, semester_id, deliverable_id or base_reference.get("deliverable_id"))
         promotion_reference, semester_name = await _build_promotion_reference(
             promotion_id, semester_id, deliverable_id or base_reference.get("deliverable_id")
         )

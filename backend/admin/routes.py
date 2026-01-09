@@ -321,6 +321,7 @@ async def associer_jury(data: AssocierJuryRequest):
             jury = existing_jury
             created = False
 
+        # 3️⃣ Prépare les infos du jury
         jury_info = {
             "jury_id": str(jury["_id"]),
             "first_name": jury.get("first_name"),
@@ -328,24 +329,14 @@ async def associer_jury(data: AssocierJuryRequest):
             "email": jury.get("email"),
             "phone": jury.get("phone"),
         }
-        
-        #3️⃣ Ajoute l'apprenti dans le jury (liste 'apprentis')
-        apprenti_info = {
-            "apprenti_id": str(apprenti["_id"]),
-            "first_name": apprenti.get("first_name"),
-            "last_name": apprenti.get("last_name"),
-            "email": apprenti.get("email"),
-            "phone": apprenti.get("phone"),
-            "annee_academique": apprenti.get("annee_academique"),
-        }
-        
-                # 4️⃣ Ajoute l'apprenti dans le jury (liste 'apprentis')
-        jury_info = {
-            "jury_id": str(jury["_id"]),
-            "first_name": jury.get("first_name"),
-            "last_name": jury.get("last_name"),
-            "email": jury.get("email"),
-        }
+
+        # 4️⃣ Vérifie la limite de jurys pour l'apprenti (max 3)
+        existing_juries = apprenti.get("juries", []) or []
+        already_present = any(j.get("jury_id") == str(jury["_id"]) for j in existing_juries)
+        if not already_present and len(existing_juries) >= 3:
+            raise HTTPException(status_code=400, detail="Limite atteinte : un apprenti ne peut pas avoir plus de 3 jurys")
+
+        # 5️⃣ Met à jour l'apprenti (idempotent: retire puis ajoute)
         await apprenti_collection.update_one(
             {"_id": apprenti["_id"]},
             {"$pull": {"juries": {"jury_id": str(jury["_id"])}}}
