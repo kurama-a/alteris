@@ -435,6 +435,59 @@ async def supprimer_entretien(apprenti_id: str, entretien_id: str):
             raise HTTPException(status_code=500, detail=f"Erreur lors de la suppression : {str(e)}")
 
 
+async def noter_entretien(apprenti_id: str, entretien_id: str, *, tuteur_id: str, note: float):
+    apprenti_collection = get_collection("apprenti")
+    tuteur_collection = get_collection("tuteur_pedagogique")
+    maitre_collection = get_collection("maitre_apprentissage")
+    jury_collection = get_collection("jury")
+
+    apprenti = await apprenti_collection.find_one({"_id": ObjectId(apprenti_id)})
+    if not apprenti:
+        raise HTTPException(status_code=404, detail="Apprenti introuvable")
+
+    tuteur_info = apprenti.get("tuteur") or {}
+    if str(tuteur_info.get("tuteur_id")) != tuteur_id:
+        raise HTTPException(status_code=403, detail="Seul le tuteur peut attribuer une note")
+
+    try:
+        note_value = float(note)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Note invalide")
+
+    if note_value < 0 or note_value > 20:
+        raise HTTPException(status_code=400, detail="La note doit etre comprise entre 0 et 20")
+    note_value = round(note_value, 2)
+
+    result = await apprenti_collection.update_one(
+        {"_id": ObjectId(apprenti_id), "entretiens.entretien_id": entretien_id},
+        {"$set": {"entretiens.$.note": note_value}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Entretien introuvable")
+
+    if tuteur_info.get("tuteur_id"):
+        await tuteur_collection.update_one(
+            {"_id": ObjectId(tuteur_info["tuteur_id"]), "entretiens.entretien_id": entretien_id},
+            {"$set": {"entretiens.$.note": note_value}},
+        )
+
+    maitre_info = apprenti.get("maitre") or {}
+    if maitre_info.get("maitre_id"):
+        await maitre_collection.update_one(
+            {"_id": ObjectId(maitre_info["maitre_id"]), "entretiens.entretien_id": entretien_id},
+            {"$set": {"entretiens.$.note": note_value}},
+        )
+
+    jury_info = apprenti.get("jury") or {}
+    if jury_info.get("jury_id"):
+        await jury_collection.update_one(
+            {"_id": ObjectId(jury_info["jury_id"]), "entretiens.entretien_id": entretien_id},
+            {"$set": {"entretiens.$.note": note_value}},
+        )
+
+    return {"entretien_id": entretien_id, "note": note_value}
+
+
 def _documents_collection():
     if database.db is None:
         raise HTTPException(status_code=500, detail="Connexion DB absente")
@@ -788,6 +841,77 @@ async def add_document_comment(
         {"$push": {"comments": comment}},
     )
     return comment
+
+
+async def update_document_comment(
+    apprenti_id: str,
+    document_id: str,
+    comment_id: str,
+    *,
+    author_id: str,
+    author_role: str,
+    content: str,
+) -> Dict[str, Any]:
+    document = await _documents_collection().find_one({"_id": ObjectId(document_id)})
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    if document.get("apprentice_id") != apprenti_id:
+        raise HTTPException(status_code=403, detail="Document non associe a cet apprenti")
+
+    normalized_role = author_role.lower()
+    if normalized_role not in COMMENTER_ROLES:
+        raise HTTPException(status_code=403, detail="Ce role ne peut pas modifier les commentaires")
+    message = content.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Commentaire vide")
+
+    comments = document.get("comments") or []
+    target = next((entry for entry in comments if entry.get("comment_id") == comment_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Commentaire introuvable")
+    if target.get("author_id") != author_id:
+        raise HTTPException(status_code=403, detail="Vous ne pouvez modifier que vos commentaires")
+
+    updated_at = datetime.utcnow()
+    await _documents_collection().update_one(
+        {"_id": document["_id"], "comments.comment_id": comment_id},
+        {"$set": {"comments.$.content": message, "comments.$.updated_at": updated_at}},
+    )
+    target["content"] = message
+    target["updated_at"] = updated_at
+    return target
+
+
+async def delete_document_comment(
+    apprenti_id: str,
+    document_id: str,
+    comment_id: str,
+    *,
+    author_id: str,
+    author_role: str,
+) -> str:
+    document = await _documents_collection().find_one({"_id": ObjectId(document_id)})
+    if not document:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    if document.get("apprentice_id") != apprenti_id:
+        raise HTTPException(status_code=403, detail="Document non associe a cet apprenti")
+
+    normalized_role = author_role.lower()
+    if normalized_role not in COMMENTER_ROLES:
+        raise HTTPException(status_code=403, detail="Ce role ne peut pas supprimer les commentaires")
+
+    comments = document.get("comments") or []
+    target = next((entry for entry in comments if entry.get("comment_id") == comment_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Commentaire introuvable")
+    if target.get("author_id") != author_id:
+        raise HTTPException(status_code=403, detail="Vous ne pouvez supprimer que vos commentaires")
+
+    await _documents_collection().update_one(
+        {"_id": document["_id"]},
+        {"$pull": {"comments": {"comment_id": comment_id}}},
+    )
+    return comment_id
 
 
 async def get_document_file(document_id: str) -> tuple[Path, str, str]:

@@ -39,7 +39,7 @@ class PromotionDeliverablePayload(BaseModel):
     order: Optional[int] = Field(None, description="Ordre d'affichage optionnel")
 
     class Config:
-        allow_population_by_field_name = True
+        validate_by_name = True
 
 
 class PromotionSemesterPayload(BaseModel):
@@ -58,7 +58,7 @@ class PromotionSemesterPayload(BaseModel):
     )
 
     class Config:
-        allow_population_by_field_name = True
+        validate_by_name = True
 
 
 class PromotionUpsertRequest(BaseModel):

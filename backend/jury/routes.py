@@ -16,7 +16,6 @@ from jury.models import (
     JuryStatus,
     JuryUpdateRequest,
     MemberDetails,
-    TimelineDeliverableOption,
     TimelineSemesterOption,
 )
 
@@ -270,20 +269,10 @@ async def list_promotion_timelines():
             name = semester.get("name")
             if not semester_id or not name:
                 continue
-            deliverables = [
-                TimelineDeliverableOption(
-                    deliverable_id=str(deliverable.get("deliverable_id") or deliverable.get("id")),
-                    title=deliverable.get("title"),
-                    due_date=deliverable.get("due_date"),
-                )
-                for deliverable in sorted(semester.get("deliverables", []), key=lambda entry: entry.get("order", 0))
-                if deliverable.get("title")
-            ]
             semesters.append(
                 TimelineSemesterOption(
                     semester_id=str(semester_id),
                     name=name,
-                    deliverables=deliverables,
                 )
             )
         if semesters:

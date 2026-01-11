@@ -652,9 +652,9 @@ export default function Juries() {
   return (
     <section className="content" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <header>
-        <h1>Gestion des jurys</h1>
+        <h1>Gestion des juries</h1>
         <p>
-          Organisez les jurys académiques et partagez les documents de présentation/rendu avec les
+          Organisez les juries académiques et partagez les documents de présentation/rendu avec les
           membres concernés.
         </p>
       </header>
@@ -670,9 +670,9 @@ export default function Juries() {
           }}
         >
           <header style={{ marginBottom: 16 }}>
-            <h2 style={{ margin: 0 }}>Créer un jury</h2>
+            <h2 style={{ margin: 0 }}>Créer un jurie</h2>
             <p style={{ margin: "8px 0 0", color: "#475569" }}>
-              Renseignez la session souhaitée puis associez les membres du jury.
+              Renseignez la session souhaitée puis associez les membres du jurie.
             </p>
           </header>
           <form
@@ -850,7 +850,7 @@ export default function Juries() {
                   minWidth: 180,
                 }}
               >
-                {isCreatingJury ? "Création..." : "Enregistrer le jury"}
+                {isCreatingJury ? "Création..." : "Enregistrer le jurie"}
               </button>
             </div>
           </form>
@@ -875,9 +875,9 @@ export default function Juries() {
         >
           <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
             <div>
-              <h2 style={{ margin: 0 }}>Jurys planifiés</h2>
+              <h2 style={{ margin: 0 }}>Juries planifiés</h2>
               <p style={{ margin: "6px 0 0", color: "#475569" }}>
-                Consultez les jurys auxquels vous êtes associé ou suivez l&apos;ensemble des sessions.
+                Consultez les juries auxquels vous êtes associé ou suivez l&apos;ensemble des sessions.
               </p>
             </div>
             <button
@@ -915,9 +915,9 @@ export default function Juries() {
         {juryError && <p style={{ color: "#b91c1c" }}>{juryError}</p>}
         {deleteError && <p style={{ color: "#b91c1c" }}>{deleteError}</p>}
         {isLoadingJuries ? (
-          <p>Chargement des jurys...</p>
+          <p>Chargement des juries...</p>
         ) : juriesToDisplay.length === 0 ? (
-          <p>Aucun jury à afficher pour le moment.</p>
+          <p>Aucun jurie à afficher pour le moment.</p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {juriesToDisplay.map((jury) => (
