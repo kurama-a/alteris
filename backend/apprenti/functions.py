@@ -329,6 +329,16 @@ async def creer_entretien(data):
     if not apprenti:
         raise HTTPException(status_code=404, detail="Apprenti introuvable")
 
+    semester_id = (data.semester_id or "").strip()
+    if not semester_id:
+        raise HTTPException(status_code=400, detail="Semestre requis")
+    _, promotion = await _retrieve_apprenti_and_promotion(data.apprenti_id)
+    _validate_entretien_semester_date(promotion, semester_id, data.date)
+
+    entretiens = apprenti.get("entretiens") or []
+    if any(entretien.get("semester_id") == semester_id for entretien in entretiens):
+        raise HTTPException(status_code=400, detail="Un entretien existe deja pour ce semestre")
+
     # 🔍 2. Vérifie qu'il a un tuteur et un maître associés
     tuteur = apprenti.get("tuteur")
     maitre = apprenti.get("maitre")
@@ -341,6 +351,7 @@ async def creer_entretien(data):
     entretien = {
         "entretien_id": str(ObjectId()),
         "apprenti_id": str(apprenti["_id"]),
+        "semester_id": semester_id,
         "apprenti_nom": f"{apprenti.get('first_name')} {apprenti.get('last_name')}",
         "date": data.date.isoformat(),
         "sujet": data.sujet,
@@ -572,6 +583,49 @@ def _parse_iso_date(value: Optional[str]) -> Optional[datetime]:
         return datetime.fromisoformat(value)
     except Exception:
         return None
+
+
+def _get_semester_date_value(semester: Dict[str, Any], key: str) -> Optional[str]:
+    candidates = [
+        key,
+        key.replace("_", ""),
+        "".join(part.capitalize() if index else part for index, part in enumerate(key.split("_"))),
+    ]
+    for candidate in candidates:
+        value = semester.get(candidate)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _find_promotion_semester(promotion: Dict[str, Any], semester_id: str) -> Dict[str, Any]:
+    for semester in promotion.get("semesters", []):
+        current_id = _normalize_semester_id(semester.get("semester_id") or semester.get("id"))
+        if current_id == semester_id:
+            return semester
+    raise HTTPException(status_code=404, detail="Semestre introuvable pour cette promotion")
+
+
+def _validate_entretien_semester_date(
+    promotion: Dict[str, Any], semester_id: str, entretien_date: datetime
+) -> None:
+    semester = _find_promotion_semester(promotion, semester_id)
+    start_value = _get_semester_date_value(semester, "start_date")
+    end_value = _get_semester_date_value(semester, "end_date")
+    if not start_value or not end_value:
+        raise HTTPException(status_code=400, detail="Dates du semestre manquantes")
+    start_dt = _parse_iso_date(start_value)
+    end_dt = _parse_iso_date(end_value)
+    if not start_dt or not end_dt:
+        raise HTTPException(status_code=400, detail="Dates du semestre invalides")
+    if entretien_date.tzinfo is not None and entretien_date.tzinfo.utcoffset(entretien_date) is not None:
+        entretien_date = entretien_date.replace(tzinfo=None)
+    start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_dt = end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+    if entretien_date < start_dt or entretien_date > end_dt:
+        raise HTTPException(
+            status_code=400, detail="La date doit etre comprise dans le semestre selectionne"
+        )
 
 
 def _find_deliverable_for_semester(promotion: Dict[str, Any], semester_id: str, key: str) -> Optional[Dict[str, Any]]:

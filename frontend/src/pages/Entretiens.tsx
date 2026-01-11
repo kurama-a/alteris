@@ -22,6 +22,7 @@ type Entretien = {
   entretien_id: string;
   apprenti_id: string;
   apprenti_nom?: string;
+  semester_id?: string;
   sujet: string;
   date: string;
   created_at: string;
@@ -127,9 +128,14 @@ export default function Entretiens() {
   );
 
   const [isFormVisible, setIsFormVisible] = React.useState<boolean>(false);
-  const [formValues, setFormValues] = React.useState<{ sujet: string; dateTime: string }>({
+  const [formValues, setFormValues] = React.useState<{
+    sujet: string;
+    dateTime: string;
+    semesterId: string;
+  }>({
     sujet: "",
     dateTime: "",
+    semesterId: "",
   });
   const [formError, setFormError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
@@ -339,12 +345,42 @@ export default function Entretiens() {
     });
   }, [entretiens]);
 
-  const updateForm = (field: "sujet" | "dateTime", value: string) => {
+  const availableSemesters = React.useMemo(
+    () => competencySummary?.semesters ?? [],
+    [competencySummary]
+  );
+
+  const toDateTimeLocalInput = React.useCallback((value?: string | null) => {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "";
+    const offset = parsed.getTimezoneOffset() * 60000;
+    return new Date(parsed.getTime() - offset).toISOString().slice(0, 16);
+  }, []);
+
+  const selectedSemesterWindow = React.useMemo(() => {
+    if (!formValues.semesterId) {
+      return null;
+    }
+    return promotionSemesters[formValues.semesterId] ?? null;
+  }, [formValues.semesterId, promotionSemesters]);
+
+  const minDateTime = React.useMemo(() => {
+    if (!selectedSemesterWindow?.start_date) return "";
+    return toDateTimeLocalInput(selectedSemesterWindow.start_date);
+  }, [selectedSemesterWindow?.start_date, toDateTimeLocalInput]);
+
+  const maxDateTime = React.useMemo(() => {
+    if (!selectedSemesterWindow?.end_date) return "";
+    return toDateTimeLocalInput(selectedSemesterWindow.end_date);
+  }, [selectedSemesterWindow?.end_date, toDateTimeLocalInput]);
+
+  const updateForm = (field: "sujet" | "dateTime" | "semesterId", value: string) => {
     setFormValues((prev) => ({ ...prev, [field]: value }));
   };
 
   const resetForm = () => {
-    setFormValues({ sujet: "", dateTime: "" });
+    setFormValues({ sujet: "", dateTime: "", semesterId: "" });
     setFormError(null);
     setIsFormVisible(false);
   };
@@ -357,12 +393,38 @@ export default function Entretiens() {
       return;
     }
 
-    if (!formValues.sujet.trim() || !formValues.dateTime) {
-      setFormError("Merci de renseigner la date et le sujet de l'entretien.");
+    if (!formValues.sujet.trim() || !formValues.dateTime || !formValues.semesterId) {
+      setFormError("Merci de renseigner le semestre, la date et le sujet de l'entretien.");
       return;
     }
 
-    const isoDate = new Date(formValues.dateTime).toISOString();
+    const selectedDate = new Date(formValues.dateTime);
+    const isoDate = selectedDate.toISOString();
+
+    const window = promotionSemesters[formValues.semesterId];
+    const startRaw = window?.start_date ?? "";
+    const endRaw = window?.end_date ?? "";
+    if (!startRaw || !endRaw) {
+      setFormError("Les dates de ce semestre ne sont pas définies.");
+      return;
+    }
+    const startDate = new Date(startRaw);
+    const endDate = new Date(endRaw);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      setFormError("Les dates du semestre sont invalides.");
+      return;
+    }
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
+    if (selectedDate < startDate || selectedDate > endDate) {
+      setFormError("La date doit être comprise dans le semestre sélectionné.");
+      return;
+    }
+
+    if (entretiens.some((entretien) => entretien.semester_id === formValues.semesterId)) {
+      setFormError("Un entretien existe déjà pour ce semestre.");
+      return;
+    }
 
     setIsSubmitting(true);
     setFormError(null);
@@ -375,6 +437,7 @@ export default function Entretiens() {
           apprenti_id: selectedApprenticeId,
           date: isoDate,
           sujet: formValues.sujet.trim(),
+          semester_id: formValues.semesterId,
         }),
       });
       setEntretiens((prev) => [payload.entretien, ...prev]);
@@ -642,11 +705,34 @@ export default function Entretiens() {
           }}
         >
           <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span>Semestre</span>
+            <select
+              value={formValues.semesterId}
+              onChange={(event) => updateForm("semesterId", event.target.value)}
+              required
+              disabled={availableSemesters.length === 0}
+              style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5f5" }}
+            >
+              <option value="">
+                {availableSemesters.length === 0
+                  ? "Aucun semestre disponible"
+                  : "Sélectionner un semestre"}
+              </option>
+              {availableSemesters.map((semester) => (
+                <option key={semester.semester_id} value={semester.semester_id}>
+                  {semester.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span>Date et heure</span>
             <input
               type="datetime-local"
               value={formValues.dateTime}
               onChange={(event) => updateForm("dateTime", event.target.value)}
+              min={minDateTime || undefined}
+              max={maxDateTime || undefined}
               required
               style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5f5" }}
             />

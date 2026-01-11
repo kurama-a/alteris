@@ -181,6 +181,12 @@
   color: #0f172a;
 }
 
+.calendar-cell.is-outside-semester {
+  background: #f1f5f9;
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #64748b;
+}
+
 .calendar-cell.is-muted {
   opacity: 0.45;
   background: #f8fafc;

@@ -1028,7 +1028,7 @@ export default function Accueil() {
                   "calendar-cell",
                   day.isCurrentMonth ? "" : "is-muted",
                   day.isToday ? "is-today" : "",
-                  coveringRanges.length > 0 ? "has-semester" : "",
+                  coveringRanges.length > 0 ? "has-semester" : "is-outside-semester",
                 ]
                   .filter(Boolean)
                   .join(" ");

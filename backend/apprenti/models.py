@@ -17,6 +17,7 @@ class User(BaseModel):
 
 class CreerEntretienRequest(BaseModel):
     apprenti_id: str
+    semester_id: str
     date: datetime
     sujet: str
 
