@@ -20,11 +20,17 @@ class CreerEntretienRequest(BaseModel):
     semester_id: str
     date: datetime
     sujet: str
+    mode: str
 
 
 class UpdateEntretienNoteRequest(BaseModel):
     tuteur_id: str
     note: float
+
+
+class UpdateEntretienStatusRequest(BaseModel):
+    approver_id: str
+    status: str
 
 
 class DocumentDefinitionModel(BaseModel):

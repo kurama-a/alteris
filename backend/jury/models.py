@@ -34,6 +34,7 @@ class JuryMembers(BaseModel):
 class JuryBase(BaseModel):
     date: datetime = Field(..., description="Date et heure du passage du jury")
     status: JuryStatus = Field(default=JuryStatus.planifie, description="Statut du jury")
+    note: Optional[float] = Field(None, description="Note du jury (0-20)")
 
 
 class JuryCreateRequest(JuryBase):
@@ -50,6 +51,7 @@ class JuryUpdateRequest(BaseModel):
     semester_id: Optional[str] = Field(None, description="ID du semestre concerné")
     date: Optional[datetime] = Field(None, description="Date et heure du passage du jury")
     status: Optional[JuryStatus] = Field(None, description="Statut du jury")
+    note: Optional[float] = Field(None, description="Note du jury (0-20)")
     tuteur_id: Optional[str] = Field(None, description="Nouveau tuteur pédagogique")
     professeur_id: Optional[str] = Field(None, description="Nouveau professeur")
     apprenti_id: Optional[str] = Field(None, description="Nouvel apprenti")

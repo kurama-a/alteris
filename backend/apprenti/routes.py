@@ -5,6 +5,7 @@ from apprenti.models import (
     HealthResponse,
     CreerEntretienRequest,
     UpdateEntretienNoteRequest,
+    UpdateEntretienStatusRequest,
     ApprenticeDocumentsResponse,
     DocumentUploadResponse,
     DocumentCommentRequest,
@@ -18,6 +19,7 @@ from .functions import (
     creer_entretien,
     supprimer_entretien,
     noter_entretien,
+    update_entretien_status,
     list_journal_documents,
     create_journal_document,
     update_journal_document,
@@ -61,6 +63,18 @@ async def update_entretien_note(
         entretien_id,
         tuteur_id=payload.tuteur_id,
         note=payload.note,
+    )
+
+
+@apprenti_api.post("/entretien/{apprenti_id}/{entretien_id}/status")
+async def update_entretien_status_route(
+    apprenti_id: str, entretien_id: str, payload: UpdateEntretienStatusRequest
+):
+    return await update_entretien_status(
+        apprenti_id,
+        entretien_id,
+        approver_id=payload.approver_id,
+        status=payload.status,
     )
 
 

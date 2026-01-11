@@ -355,6 +355,10 @@ async def creer_entretien(data):
         "apprenti_nom": f"{apprenti.get('first_name')} {apprenti.get('last_name')}",
         "date": data.date.isoformat(),
         "sujet": data.sujet,
+        "mode": data.mode,
+        "status": "en_attente",
+        "tuteur_status": "en_attente",
+        "maitre_status": "en_attente",
         "created_at": datetime.utcnow().isoformat(),
         "tuteur": tuteur,
         "maitre": maitre
@@ -497,6 +501,85 @@ async def noter_entretien(apprenti_id: str, entretien_id: str, *, tuteur_id: str
         )
 
     return {"entretien_id": entretien_id, "note": note_value}
+
+
+async def update_entretien_status(
+    apprenti_id: str,
+    entretien_id: str,
+    *,
+    approver_id: str,
+    status: str,
+) -> Dict[str, Any]:
+    apprenti_collection = get_collection("apprenti")
+    tuteur_collection = get_collection("tuteur_pedagogique")
+    maitre_collection = get_collection("maitre_apprentissage")
+    jury_collection = get_collection("jury")
+
+    apprenti = await apprenti_collection.find_one({"_id": ObjectId(apprenti_id)})
+    if not apprenti:
+        raise HTTPException(status_code=404, detail="Apprenti introuvable")
+
+    status_value = (status or "").strip().lower()
+    if status_value not in {"accepte", "refuse"}:
+        raise HTTPException(status_code=400, detail="Statut invalide")
+
+    entretiens = apprenti.get("entretiens") or []
+    entretien = next((item for item in entretiens if item.get("entretien_id") == entretien_id), None)
+    if not entretien:
+        raise HTTPException(status_code=404, detail="Entretien introuvable")
+
+    tuteur_info = entretien.get("tuteur") or {}
+    maitre_info = entretien.get("maitre") or {}
+    is_tuteur = str(tuteur_info.get("tuteur_id")) == approver_id
+    is_maitre = str(maitre_info.get("maitre_id")) == approver_id
+    if not is_tuteur and not is_maitre:
+        raise HTTPException(status_code=403, detail="Vous n'etes pas autorise a valider cet entretien")
+
+    updated_at = datetime.utcnow().isoformat()
+    set_updates: Dict[str, Any] = {
+        "entretiens.$.status_updated_at": updated_at,
+    }
+    if is_tuteur:
+        set_updates["entretiens.$.tuteur_status"] = status_value
+        set_updates["entretiens.$.tuteur_status_updated_at"] = updated_at
+    if is_maitre:
+        set_updates["entretiens.$.maitre_status"] = status_value
+        set_updates["entretiens.$.maitre_status_updated_at"] = updated_at
+
+    next_tuteur_status = status_value if is_tuteur else entretien.get("tuteur_status") or "en_attente"
+    next_maitre_status = status_value if is_maitre else entretien.get("maitre_status") or "en_attente"
+    if "refuse" in (next_tuteur_status, next_maitre_status):
+        set_updates["entretiens.$.status"] = "refuse"
+    elif next_tuteur_status == "accepte" and next_maitre_status == "accepte":
+        set_updates["entretiens.$.status"] = "accepte"
+    else:
+        set_updates["entretiens.$.status"] = "en_attente"
+
+    await apprenti_collection.update_one(
+        {"_id": ObjectId(apprenti_id), "entretiens.entretien_id": entretien_id},
+        {"$set": set_updates},
+    )
+
+    if tuteur_info.get("tuteur_id"):
+        await tuteur_collection.update_one(
+            {"_id": ObjectId(tuteur_info["tuteur_id"]), "entretiens.entretien_id": entretien_id},
+            {"$set": set_updates},
+        )
+
+    if maitre_info.get("maitre_id"):
+        await maitre_collection.update_one(
+            {"_id": ObjectId(maitre_info["maitre_id"]), "entretiens.entretien_id": entretien_id},
+            {"$set": set_updates},
+        )
+
+    jury_info = entretien.get("jury") or {}
+    if jury_info.get("jury_id"):
+        await jury_collection.update_one(
+            {"_id": ObjectId(jury_info["jury_id"]), "entretiens.entretien_id": entretien_id},
+            {"$set": set_updates},
+        )
+
+    return {"entretien_id": entretien_id, "status": set_updates.get("entretiens.$.status")}
 
 
 def _documents_collection():

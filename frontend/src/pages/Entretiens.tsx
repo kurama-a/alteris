@@ -24,9 +24,16 @@ type Entretien = {
   apprenti_nom?: string;
   semester_id?: string;
   sujet: string;
+  mode?: string;
   date: string;
   created_at: string;
   note?: number | null;
+  status?: string;
+  status_updated_at?: string;
+  tuteur_status?: string;
+  tuteur_status_updated_at?: string;
+  maitre_status?: string;
+  maitre_status_updated_at?: string;
   tuteur?: ContactInfo;
   maitre?: ContactInfo;
 };
@@ -87,6 +94,13 @@ export default function Entretiens() {
     () => Array.from(normalizedRoleSet).some((role) => role.includes("maitre")),
     [normalizedRoleSet]
   );
+  const canApproveEntretien = React.useMemo(
+    () =>
+      Array.from(normalizedRoleSet).some(
+        (role) => role.includes("tuteur") || role.includes("maitre")
+      ),
+    [normalizedRoleSet]
+  );
   const selfApprenticeOption: SelectableApprentice | null = isApprentice
     ? {
         id: me.id,
@@ -132,10 +146,12 @@ export default function Entretiens() {
     sujet: string;
     dateTime: string;
     semesterId: string;
+    mode: string;
   }>({
     sujet: "",
     dateTime: "",
     semesterId: "",
+    mode: "presentiel",
   });
   const [formError, setFormError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
@@ -144,6 +160,8 @@ export default function Entretiens() {
   const [noteDrafts, setNoteDrafts] = React.useState<Record<string, string>>({});
   const [noteBusyMap, setNoteBusyMap] = React.useState<Record<string, boolean>>({});
   const [noteError, setNoteError] = React.useState<string | null>(null);
+  const [statusBusyMap, setStatusBusyMap] = React.useState<Record<string, boolean>>({});
+  const [statusErrorMap, setStatusErrorMap] = React.useState<Record<string, string | null>>({});
 
   const [competencySummary, setCompetencySummary] =
     React.useState<ApprenticeCompetenciesResponse | null>(null);
@@ -375,12 +393,12 @@ export default function Entretiens() {
     return toDateTimeLocalInput(selectedSemesterWindow.end_date);
   }, [selectedSemesterWindow?.end_date, toDateTimeLocalInput]);
 
-  const updateForm = (field: "sujet" | "dateTime" | "semesterId", value: string) => {
+  const updateForm = (field: "sujet" | "dateTime" | "semesterId" | "mode", value: string) => {
     setFormValues((prev) => ({ ...prev, [field]: value }));
   };
 
   const resetForm = () => {
-    setFormValues({ sujet: "", dateTime: "", semesterId: "" });
+    setFormValues({ sujet: "", dateTime: "", semesterId: "", mode: "presentiel" });
     setFormError(null);
     setIsFormVisible(false);
   };
@@ -438,6 +456,7 @@ export default function Entretiens() {
           date: isoDate,
           sujet: formValues.sujet.trim(),
           semester_id: formValues.semesterId,
+          mode: formValues.mode,
         }),
       });
       setEntretiens((prev) => [payload.entretien, ...prev]);
@@ -508,6 +527,75 @@ export default function Entretiens() {
       }
     },
     [APPRENTI_API_URL, me.id, noteDrafts, selectedApprenticeId, token]
+  );
+
+  const computeOverallStatus = React.useCallback(
+    (tuteurStatus?: string, maitreStatus?: string) => {
+      const tuteurValue = (tuteurStatus ?? "en_attente").toLowerCase();
+      const maitreValue = (maitreStatus ?? "en_attente").toLowerCase();
+      if (tuteurValue === "refuse" || maitreValue === "refuse") {
+        return "refuse";
+      }
+      if (tuteurValue === "accepte" && maitreValue === "accepte") {
+        return "accepte";
+      }
+      return "en_attente";
+    },
+    []
+  );
+
+  const handleStatusUpdate = React.useCallback(
+    async (entretienId: string, status: "accepte" | "refuse", role: "tuteur" | "maitre") => {
+      if (!token || !selectedApprenticeId) return;
+      setStatusBusyMap((current) => ({ ...current, [entretienId]: true }));
+      setStatusErrorMap((current) => ({ ...current, [entretienId]: null }));
+      try {
+        await fetchJson(
+          `${APPRENTI_API_URL}/entretien/${selectedApprenticeId}/${entretienId}/status`,
+          {
+            method: "POST",
+            token,
+            body: JSON.stringify({
+              approver_id: me.id,
+              status,
+            }),
+          }
+        );
+        const updatedAt = new Date().toISOString();
+        setEntretiens((current) =>
+          current.map((entretien) => {
+            if (entretien.entretien_id !== entretienId) {
+              return entretien;
+            }
+            const next =
+              role === "tuteur"
+                ? {
+                    ...entretien,
+                    tuteur_status: status,
+                    tuteur_status_updated_at: updatedAt,
+                  }
+                : {
+                    ...entretien,
+                    maitre_status: status,
+                    maitre_status_updated_at: updatedAt,
+                  };
+            const nextOverall = computeOverallStatus(next.tuteur_status, next.maitre_status);
+            return {
+              ...next,
+              status: nextOverall,
+              status_updated_at: updatedAt,
+            };
+          })
+        );
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Impossible de mettre a jour le statut.";
+        setStatusErrorMap((current) => ({ ...current, [entretienId]: message }));
+      } finally {
+        setStatusBusyMap((current) => ({ ...current, [entretienId]: false }));
+      }
+    },
+    [APPRENTI_API_URL, computeOverallStatus, me.id, selectedApprenticeId, token]
   );
 
   const handleCompetencyChange = React.useCallback(
@@ -747,6 +835,18 @@ export default function Entretiens() {
               required
               style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5f5" }}
             />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span>Mode</span>
+            <select
+              value={formValues.mode}
+              onChange={(event) => updateForm("mode", event.target.value)}
+              style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #cbd5f5" }}
+            >
+              <option value="presentiel">Presentiel</option>
+              <option value="distanciel">Distanciel</option>
+              <option value="hybride">Hybride</option>
+            </select>
           </label>
           <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
             <button
@@ -1143,12 +1243,24 @@ export default function Entretiens() {
         <div className="entretiens-grid">
           {sortedEntretiens.map((entretien) => {
             const isTutorForMeeting = entretien.tuteur?.tuteur_id === me.id;
+            const isMaitreForMeeting = entretien.maitre?.maitre_id === me.id;
+            const isApprover = canApproveEntretien && (isTutorForMeeting || isMaitreForMeeting);
+            const tuteurStatus = (entretien.tuteur_status ?? "en_attente").toLowerCase();
+            const maitreStatus = (entretien.maitre_status ?? "en_attente").toLowerCase();
+            const statusValue = computeOverallStatus(tuteurStatus, maitreStatus);
             const draftValue =
               noteDrafts[entretien.entretien_id] ??
               (typeof entretien.note === "number" ? entretien.note.toString() : "");
             const displayNote =
               typeof entretien.note === "number" ? `${entretien.note.toFixed(1)} / 20` : "Non évalué";
             const isSavingNote = Boolean(noteBusyMap[entretien.entretien_id]);
+            const isSavingStatus = Boolean(statusBusyMap[entretien.entretien_id]);
+            const statusLabel =
+              statusValue === "accepte"
+                ? "Accepte"
+                : statusValue === "refuse"
+                ? "Refuse"
+                : "En attente";
             return (
               <article key={entretien.entretien_id} className="entretien-card">
                 <header className="entretien-card-header">
@@ -1157,8 +1269,33 @@ export default function Entretiens() {
                     <h3 className="entretien-card-title">{entretien.sujet}</h3>
                     <p className="entretien-card-meta">
                       Créé le {formatDateTime(entretien.created_at)}
+                    {entretien.mode ? (
+                      <p className="entretien-card-meta">Mode : {entretien.mode}</p>
+                    ) : null}
                     </p>
                   </div>
+                  <span
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      background:
+                        statusValue === "accepte"
+                          ? "#dcfce7"
+                          : statusValue === "refuse"
+                          ? "#fee2e2"
+                          : "#e0f2fe",
+                      color:
+                        statusValue === "accepte"
+                          ? "#166534"
+                          : statusValue === "refuse"
+                          ? "#b91c1c"
+                          : "#075985",
+                    }}
+                  >
+                    {statusLabel}
+                  </span>
                   {canModifySelected && (
                     <button
                       type="button"
@@ -1173,6 +1310,137 @@ export default function Entretiens() {
                 <div className="entretien-card-body">
                   {renderContact(entretien.tuteur, "Tuteur entreprise")}
                   {renderContact(entretien.maitre, "Maitre d'apprentissage")}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                    <span
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 999,
+                        background:
+                          tuteurStatus === "accepte"
+                            ? "#dcfce7"
+                            : tuteurStatus === "refuse"
+                            ? "#fee2e2"
+                            : "#e0f2fe",
+                        color:
+                          tuteurStatus === "accepte"
+                            ? "#166534"
+                            : tuteurStatus === "refuse"
+                            ? "#b91c1c"
+                            : "#075985",
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Tuteur : {tuteurStatus === "accepte" ? "Accepte" : tuteurStatus === "refuse" ? "Refuse" : "En attente"}
+                    </span>
+                    <span
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 999,
+                        background:
+                          maitreStatus === "accepte"
+                            ? "#dcfce7"
+                            : maitreStatus === "refuse"
+                            ? "#fee2e2"
+                            : "#e0f2fe",
+                        color:
+                          maitreStatus === "accepte"
+                            ? "#166534"
+                            : maitreStatus === "refuse"
+                            ? "#b91c1c"
+                            : "#075985",
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Maitre : {maitreStatus === "accepte" ? "Accepte" : maitreStatus === "refuse" ? "Refuse" : "En attente"}
+                    </span>
+                  </div>
+                  {isApprover ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {isTutorForMeeting ? (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <span style={{ fontSize: 12, color: "#475569" }}>Validation tuteur</span>
+                          <button
+                            type="button"
+                            onClick={() => handleStatusUpdate(entretien.entretien_id, "accepte", "tuteur")}
+                            disabled={isSavingStatus || tuteurStatus === "accepte"}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 8,
+                              border: "1px solid #22c55e",
+                              background: tuteurStatus === "accepte" ? "#dcfce7" : "#fff",
+                              color: "#166534",
+                              fontWeight: 600,
+                              cursor: isSavingStatus ? "wait" : "pointer",
+                            }}
+                          >
+                            {isSavingStatus ? "..." : "Accepter"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleStatusUpdate(entretien.entretien_id, "refuse", "tuteur")}
+                            disabled={isSavingStatus || tuteurStatus === "refuse"}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 8,
+                              border: "1px solid #ef4444",
+                              background: tuteurStatus === "refuse" ? "#fee2e2" : "#fff",
+                              color: "#b91c1c",
+                              fontWeight: 600,
+                              cursor: isSavingStatus ? "wait" : "pointer",
+                            }}
+                          >
+                            {isSavingStatus ? "..." : "Refuser"}
+                          </button>
+                        </div>
+                      ) : null}
+                      {isMaitreForMeeting ? (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <span style={{ fontSize: 12, color: "#475569" }}>Validation maitre</span>
+                          <button
+                            type="button"
+                            onClick={() => handleStatusUpdate(entretien.entretien_id, "accepte", "maitre")}
+                            disabled={isSavingStatus || maitreStatus === "accepte"}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 8,
+                              border: "1px solid #22c55e",
+                              background: maitreStatus === "accepte" ? "#dcfce7" : "#fff",
+                              color: "#166534",
+                              fontWeight: 600,
+                              cursor: isSavingStatus ? "wait" : "pointer",
+                            }}
+                          >
+                            {isSavingStatus ? "..." : "Accepter"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleStatusUpdate(entretien.entretien_id, "refuse", "maitre")}
+                            disabled={isSavingStatus || maitreStatus === "refuse"}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 8,
+                              border: "1px solid #ef4444",
+                              background: maitreStatus === "refuse" ? "#fee2e2" : "#fff",
+                              color: "#b91c1c",
+                              fontWeight: 600,
+                              cursor: isSavingStatus ? "wait" : "pointer",
+                            }}
+                          >
+                            {isSavingStatus ? "..." : "Refuser"}
+                          </button>
+                        </div>
+                      ) : null}
+                      {statusErrorMap[entretien.entretien_id] ? (
+                        <small style={{ color: "#b91c1c" }}>
+                          {statusErrorMap[entretien.entretien_id]}
+                        </small>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="entretien-note-section">
                   <span className="entretien-note-label">Note du tuteur</span>

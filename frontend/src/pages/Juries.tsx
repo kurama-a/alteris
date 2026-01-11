@@ -8,7 +8,12 @@ import {
 import { AUTH_API_URL, JURY_API_URL, fetchJson } from "../config";
 import "../styles/juries.css";
 
-const JURY_CATEGORIES: Set<DocumentCategory> = new Set(["presentation", "rapport"]);
+const JURY_CATEGORY_MATCHERS = ["presentation", "rapport"];
+
+const isJuryCategory = (value?: string | null) => {
+  const normalized = (value ?? "").toLowerCase().trim();
+  return JURY_CATEGORY_MATCHERS.some((match) => normalized.includes(match));
+};
 
 type JuryStatus = "planifie" | "termine";
 
@@ -26,6 +31,7 @@ type JuryRecord = {
   semestre_reference: string;
   date: string;
   status: JuryStatus;
+  note?: number | null;
   members: {
     tuteur: JuryMemberDetails;
     professeur: JuryMemberDetails;
@@ -162,6 +168,9 @@ export default function Juries() {
   const [updateError, setUpdateError] = React.useState<string | null>(null);
   const [statusUpdatingMap, setStatusUpdatingMap] = React.useState<Record<string, boolean>>({});
   const [statusErrorMap, setStatusErrorMap] = React.useState<Record<string, string | null>>({});
+  const [noteDrafts, setNoteDrafts] = React.useState<Record<string, string>>({});
+  const [noteBusyMap, setNoteBusyMap] = React.useState<Record<string, boolean>>({});
+  const [noteErrorMap, setNoteErrorMap] = React.useState<Record<string, string | null>>({});
   const [deleteError, setDeleteError] = React.useState<string | null>(null);
 
   const normalizedRoles = React.useMemo(
@@ -208,10 +217,60 @@ export default function Juries() {
   }, [accessibleJuries, canManageJuries, selectedApprenticeId]);
 
   const [juryDocumentsMap, setJuryDocumentsMap] = React.useState<
-    Record<string, StoredDocument[]>
+    Record<string, Record<string, StoredDocument[]>>
   >({});
   const [isLoadingJuryDocs, setIsLoadingJuryDocs] = React.useState(false);
   const [juryDocsError, setJuryDocsError] = React.useState<string | null>(null);
+
+  const normalizeKeySegment = React.useCallback((value?: string | null) => {
+    if (value === undefined || value === null) {
+      return null;
+    }
+    const raw = value.toString().trim();
+    if (!raw) {
+      return null;
+    }
+    return raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+  }, []);
+
+  const extractKeyDigits = React.useCallback((value?: string | null) => {
+    if (value === undefined || value === null) {
+      return null;
+    }
+    const raw = value.toString().trim();
+    if (!raw) {
+      return null;
+    }
+    const digits = raw.replace(/[^0-9]/g, "");
+    return digits || null;
+  }, []);
+
+  const registerSemesterLookup = React.useCallback(
+    (
+      lookup: Record<string, StoredDocument[]>,
+      keyValue: string | null | undefined,
+      docs: StoredDocument[]
+    ) => {
+      if (!keyValue) {
+        return;
+      }
+      const rawKey = keyValue.toString().trim();
+      if (!rawKey) {
+        return;
+      }
+      const normalizedKey = normalizeKeySegment(rawKey);
+      const digitsKey = extractKeyDigits(rawKey);
+      lookup[rawKey] = docs;
+      lookup[rawKey.toLowerCase()] = docs;
+      if (normalizedKey) {
+        lookup[normalizedKey] = docs;
+      }
+      if (digitsKey) {
+        lookup[digitsKey] = docs;
+      }
+    },
+    [extractKeyDigits, normalizeKeySegment]
+  );
 
   const loadJuryDocuments = React.useCallback(async () => {
     if (!token || !canAccessPage) {
@@ -228,14 +287,32 @@ export default function Juries() {
     setIsLoadingJuryDocs(true);
     setJuryDocsError(null);
     try {
-      const resultEntries: [string, StoredDocument[]][] = [];
+      const resultEntries: [string, Record<string, StoredDocument[]>][] = [];
       for (const apprenticeId of apprenticeIds) {
         try {
           const payload = await fetchDocumentsApi(apprenticeId, token);
-          const docs = payload.semesters.flatMap((semester) =>
-            semester.documents.filter((doc) => JURY_CATEGORIES.has(doc.category as DocumentCategory))
-          );
-          resultEntries.push([apprenticeId, docs]);
+          const lookups: Record<string, StoredDocument[]> = {};
+          (payload.semesters ?? []).forEach((semester) => {
+            const deliverableLabelById = new Map<string, string>();
+            (semester.deliverables ?? []).forEach((deliverable) => {
+              if (deliverable.id) {
+                deliverableLabelById.set(
+                  deliverable.id.toString(),
+                  (deliverable.label ?? "").toString()
+                );
+              }
+            });
+            const filteredDocs = (semester.documents ?? []).filter((doc) => {
+              if (isJuryCategory(doc.category)) {
+                return true;
+              }
+              const deliverableLabel = deliverableLabelById.get(doc.category);
+              return isJuryCategory(deliverableLabel);
+            });
+            registerSemesterLookup(lookups, semester.semester_id, filteredDocs);
+            registerSemesterLookup(lookups, semester.name, filteredDocs);
+          });
+          resultEntries.push([apprenticeId, lookups]);
         } catch (error) {
           const message =
             error instanceof Error
@@ -248,31 +325,11 @@ export default function Juries() {
     } finally {
       setIsLoadingJuryDocs(false);
     }
-  }, [canAccessPage, fetchDocumentsApi, juriesToDisplay, token]);
+  }, [canAccessPage, fetchDocumentsApi, juriesToDisplay, registerSemesterLookup, token]);
 
   React.useEffect(() => {
     loadJuryDocuments();
   }, [loadJuryDocuments]);
-
-  const groupedDocuments = React.useMemo(() => {
-    const map = new Map<
-      string,
-      { apprenticeId: string; apprenticeName: string; docs: StoredDocument[] }
-    >();
-    juriesToDisplay.forEach((jury) => {
-      const apprentice = jury.members.apprenti;
-      const docs = juryDocumentsMap[apprentice.user_id];
-      if (!docs || docs.length === 0) {
-        return;
-      }
-      map.set(apprentice.user_id, {
-        apprenticeId: apprentice.user_id,
-        apprenticeName: formatMember(apprentice),
-        docs,
-      });
-    });
-    return Array.from(map.values());
-  }, [juriesToDisplay, juryDocumentsMap]);
 
   const selectedPromotion = React.useMemo(
     () => timelineOptions.find((option) => option.promotion_id === formDraft.promotionId),
@@ -302,6 +359,19 @@ export default function Juries() {
         jury.members.tuteur.user_id === userId ||
         jury.members.professeur.user_id === userId ||
         jury.members.intervenant.user_id === userId
+      );
+    },
+    [canManageJuries, me.id]
+  );
+
+  const canChangeNoteForJury = React.useCallback(
+    (jury: JuryRecord) => {
+      const userId = me.id;
+      return (
+        jury.members.tuteur.user_id === userId ||
+        jury.members.professeur.user_id === userId ||
+        jury.members.intervenant.user_id === userId ||
+        canManageJuries
       );
     },
     [canManageJuries, me.id]
@@ -593,6 +663,45 @@ export default function Juries() {
     [fetchJuries, token]
   );
 
+  const handleNoteChange = React.useCallback((juryId: string, value: string) => {
+    setNoteDrafts((current) => ({ ...current, [juryId]: value }));
+    setNoteErrorMap((current) => ({ ...current, [juryId]: null }));
+  }, []);
+
+  const handleSaveNote = React.useCallback(
+    async (juryId: string) => {
+      if (!token) return;
+      const raw = noteDrafts[juryId];
+      const parsed = Number(raw);
+      if (Number.isNaN(parsed)) {
+        setNoteErrorMap((current) => ({ ...current, [juryId]: "Note invalide." }));
+        return;
+      }
+      if (parsed < 0 || parsed > 20) {
+        setNoteErrorMap((current) => ({ ...current, [juryId]: "La note doit etre entre 0 et 20." }));
+        return;
+      }
+      setNoteBusyMap((current) => ({ ...current, [juryId]: true }));
+      setNoteErrorMap((current) => ({ ...current, [juryId]: null }));
+      try {
+        await fetchJson<JuryRecord>(`${JURY_API_URL}/juries/${juryId}`, {
+          method: "PATCH",
+          token,
+          body: JSON.stringify({ note: parsed }),
+        });
+        setNoteDrafts((current) => ({ ...current, [juryId]: parsed.toString() }));
+        await fetchJuries();
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Echec de l'enregistrement de la note.";
+        setNoteErrorMap((current) => ({ ...current, [juryId]: message }));
+      } finally {
+        setNoteBusyMap((current) => ({ ...current, [juryId]: false }));
+      }
+    },
+    [fetchJuries, noteDrafts, token]
+  );
+
   if (!canAccessPage) {
     return (
       <section className="content content-fallback">
@@ -605,49 +714,6 @@ export default function Juries() {
       </section>
     );
   }
-
-  const groupedDocumentsSection = (
-    <>
-      <header>
-        <h2 style={{ margin: 0 }}>Documents de jury</h2>
-        <p style={{ margin: "8px 0 0", color: "#475569" }}>
-          Retrouvez ici les présentations et rapports déposés par les apprentis dont vous suivez le
-          jury.
-        </p>
-      </header>
-      {juryDocsError && <p style={{ color: "#b91c1c" }}>{juryDocsError}</p>}
-      {isLoadingJuryDocs ? (
-        <p style={{ marginTop: 12 }}>Chargement des documents de jury...</p>
-      ) : groupedDocuments.length === 0 ? (
-        <p style={{ marginTop: 12 }}>Aucun document de jury disponible pour le moment.</p>
-      ) : (
-        <div className="jury-documents" style={{ marginTop: 18 }}>
-          {groupedDocuments.map((group) => (
-            <article key={group.apprenticeId} className="jury-documents-card">
-              <header className="jury-documents-header">
-                <h2>{group.apprenticeName}</h2>
-                <span className="jury-documents-apprentice-id">{group.apprenticeId}</span>
-              </header>
-              <ul className="jury-documents-list">
-                {group.docs.map((doc) => (
-                  <li key={doc.id}>
-                    <a href={getDownloadUrl(doc.id)} download={doc.file_name}>
-                      {doc.file_name}
-                    </a>{" "}
-                    - téléversé le{" "}
-                    {new Date(doc.uploaded_at).toLocaleDateString("fr-FR", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </li>
-                ))}
-              </ul>
-            </article>
-          ))}
-        </div>
-      )}
-    </>
-  );
 
   return (
     <section className="content" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -920,7 +986,33 @@ export default function Juries() {
           <p>Aucun jurie à afficher pour le moment.</p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {juriesToDisplay.map((jury) => (
+            {juriesToDisplay.map((jury) => {
+              const apprenticeId = jury.members.apprenti.user_id;
+              const docLookup = juryDocumentsMap[apprenticeId] || {};
+              const candidateKeys = [
+                jury.promotion_reference?.semester_id,
+                jury.promotion_reference?.semester_name,
+                jury.semestre_reference,
+              ]
+                .flatMap((candidate) => {
+                  if (!candidate) return [];
+                  const raw = candidate.toString().trim();
+                  if (!raw) return [];
+                  const normalized = normalizeKeySegment(raw);
+                  const digits = extractKeyDigits(raw);
+                  return Array.from(
+                    new Set([raw, raw.toLowerCase(), normalized, digits].filter(Boolean))
+                  );
+                })
+                .filter((key): key is string => Boolean(key));
+              let semesterDocs: StoredDocument[] | undefined;
+              for (const key of candidateKeys) {
+                if (docLookup[key]) {
+                  semesterDocs = docLookup[key];
+                  break;
+                }
+              }
+              return (
               <article
                 key={jury.id}
                 style={{
@@ -991,6 +1083,50 @@ export default function Juries() {
                     {statusErrorMap[jury.id] ? (
                       <small style={{ color: "#b91c1c" }}>{statusErrorMap[jury.id]}</small>
                     ) : null}
+                    {canChangeNoteForJury(jury) ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <label style={{ fontSize: 12, color: "#475569" }}>Note /20</label>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <input
+                            type="number"
+                            min={0}
+                            max={20}
+                            step={0.5}
+                            value={noteDrafts[jury.id] ?? (jury.note ?? "").toString()}
+                            onChange={(event) => handleNoteChange(jury.id, event.target.value)}
+                            style={{
+                              width: 80,
+                              padding: "6px 8px",
+                              borderRadius: 6,
+                              border: "1px solid #cbd5f5",
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSaveNote(jury.id)}
+                            disabled={Boolean(noteBusyMap[jury.id])}
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: 6,
+                              border: "1px solid #cbd5f5",
+                              background: noteBusyMap[jury.id] ? "#e2e8f0" : "#fff",
+                              cursor: noteBusyMap[jury.id] ? "wait" : "pointer",
+                              fontSize: 12,
+                              fontWeight: 600,
+                            }}
+                          >
+                            {noteBusyMap[jury.id] ? "..." : "Enregistrer"}
+                          </button>
+                        </div>
+                        {noteErrorMap[jury.id] ? (
+                          <small style={{ color: "#b91c1c" }}>{noteErrorMap[jury.id]}</small>
+                        ) : null}
+                      </div>
+                    ) : jury.note !== undefined && jury.note !== null ? (
+                      <small style={{ color: "#475569" }}>
+                        Note : {jury.note.toFixed(1)} / 20
+                      </small>
+                    ) : null}
                   </div>
                 </div>
                 <div
@@ -1025,6 +1161,89 @@ export default function Juries() {
                     <p style={{ margin: "4px 0 0" }}>{formatMember(jury.members.intervenant)}</p>
                   </div>
                 </div>
+                <div
+                  style={{
+                    border: "1px dashed #cbd5f5",
+                    borderRadius: 10,
+                    padding: 12,
+                    background: "#fff",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
+                >
+                  <span style={{ fontSize: 12, textTransform: "uppercase", color: "#94a3b8" }}>
+                    Documents du semestre
+                  </span>
+                  {candidateKeys.length === 0 ? (
+                    <p style={{ margin: 0, color: "#475569" }}>
+                      Semestre non renseigné pour ce jury.
+                    </p>
+                  ) : isLoadingJuryDocs && !semesterDocs ? (
+                    <p style={{ margin: 0, color: "#475569" }}>Chargement des documents...</p>
+                  ) : semesterDocs && semesterDocs.length > 0 ? (
+                    <ul
+                      style={{
+                        listStyle: "none",
+                        padding: 0,
+                        margin: 0,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 8,
+                      }}
+                    >
+                      {semesterDocs.map((doc) => (
+                        <li
+                          key={doc.id}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: 12,
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            background: "#f1f5f9",
+                          }}
+                        >
+                          <div>
+                            <strong>
+                              {doc.category === "rapport"
+                                ? "Rapport"
+                                : doc.category === "presentation"
+                                ? "Présentation"
+                                : doc.file_name}
+                            </strong>
+                            <p style={{ margin: 0, fontSize: 12, color: "#475569" }}>
+                              Ajouté le{" "}
+                              {new Date(doc.uploaded_at).toLocaleString("fr-FR", {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              })}
+                            </p>
+                          </div>
+                          <a
+                            href={getDownloadUrl(doc.id)}
+                            download={doc.file_name}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 999,
+                              border: "1px solid #2563eb",
+                              color: "#1d4ed8",
+                              textDecoration: "none",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Télécharger
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p style={{ margin: 0, color: "#475569" }}>
+                      Aucun rapport ou présentation déposé pour ce semestre.
+                    </p>
+                  )}
+                </div>
                 {canManageJuries ? (
                   <div className="jury-card-actions">
                     <button type="button" onClick={() => openEditModal(jury)}>
@@ -1040,23 +1259,12 @@ export default function Juries() {
                   </div>
                 ) : null}
               </article>
-            ))}
+              );
+            })}
           </div>
         )}
       </article>
 
-      {(isJuryMember || isApprentice) && (
-        <article
-          style={{
-            border: "1px solid #e2e8f0",
-            borderRadius: 14,
-            padding: 24,
-            background: "#fff",
-          }}
-        >
-          {groupedDocumentsSection}
-        </article>
-      )}
       {editingJuryId ? (
         <div className="jury-modal-backdrop" role="dialog" aria-modal="true">
           <div className="jury-modal">

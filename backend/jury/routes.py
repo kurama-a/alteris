@@ -69,13 +69,6 @@ def _parse_object_id(identifier: str) -> ObjectId:
         raise HTTPException(status_code=400, detail="Identifiant invalide")
 
 
-def _normalize_optional_id(value: Optional[str]) -> Optional[str]:
-    if value is None:
-        return None
-    trimmed = value.strip()
-    return trimmed or None
-
-
 async def _load_member(member_key: str, user_id: str) -> MemberDetails:
     source = MEMBER_SOURCES[member_key]
     collection = _get_collection(source["collection"])
@@ -137,6 +130,7 @@ def _serialize_jury(document: dict) -> JuryResponse:
         semestre_reference=document.get("semestre_reference") or "",
         date=document.get("date"),
         status=JuryStatus(status_value),
+        note=document.get("note"),
         members=_serialize_members(document.get("members", {})),
         created_at=document.get("created_at"),
         updated_at=document.get("updated_at"),
@@ -166,22 +160,11 @@ def _match_semester(document: dict, semester_id: str) -> dict:
     raise HTTPException(status_code=404, detail="Semestre introuvable pour cette promotion")
 
 
-def _match_deliverable(semester: dict, deliverable_id: Optional[str]) -> Optional[dict]:
-    if not deliverable_id:
-        return None
-    for deliverable in semester.get("deliverables", []):
-        current_id = str(deliverable.get("deliverable_id") or deliverable.get("id") or "")
-        if current_id == deliverable_id:
-            return deliverable
-    raise HTTPException(status_code=404, detail="Livrable introuvable pour ce semestre")
-
-
 async def _build_promotion_reference(
-    promotion_id: str, semester_id: str, deliverable_id: Optional[str]
+    promotion_id: str, semester_id: str
 ) -> Tuple[JuryPromotionReference, str]:
     promotion_doc = await _load_promotion_document(promotion_id)
     semester_doc = _match_semester(promotion_doc, semester_id)
-    deliverable_doc = _match_deliverable(semester_doc, deliverable_id)
 
     promotion_reference = JuryPromotionReference(
         promotion_id=str(promotion_doc["_id"]),
@@ -189,56 +172,11 @@ async def _build_promotion_reference(
         label=promotion_doc.get("label"),
         semester_id=semester_id,
         semester_name=semester_doc.get("name"),
-        deliverable_id=deliverable_doc.get("deliverable_id") if deliverable_doc else None,
-        deliverable_title=deliverable_doc.get("title") if deliverable_doc else None,
     )
     semester_name = promotion_reference.semester_name
     if not semester_name:
         raise HTTPException(status_code=400, detail="Le semestre selectionne est invalide")
     return promotion_reference, semester_name
-
-
-def _parse_iso_date(value: Optional[str]) -> Optional[datetime]:
-    if not value:
-        return None
-    value = value.strip()
-    if not value:
-        return None
-    # Try several ISO-like formats
-    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
-        try:
-            return datetime.strptime(value, fmt)
-        except Exception:
-            continue
-    try:
-        # last resort, let fromisoformat handle offsets etc.
-        return datetime.fromisoformat(value)
-    except Exception:
-        return None
-
-
-async def _ensure_deliverable_open(promotion_id: str, semester_id: str, deliverable_id: Optional[str]):
-    """Raise HTTPException(400) if the deliverable's due_date is present and already passed.
-
-    This helper is generic — call it from any endpoint that accepts a `promotion_id`/`semester_id`
-    and an optional `deliverable_id` to enforce that submissions or actions are refused after
-    the configured due date.
-    """
-    if not deliverable_id:
-        return
-    promotion_doc = await _load_promotion_document(promotion_id)
-    semester = _match_semester(promotion_doc, semester_id)
-    deliverable = _match_deliverable(semester, deliverable_id)
-    due_value = deliverable.get("due_date") if deliverable else None
-    if not due_value:
-        return
-    due_dt = _parse_iso_date(due_value)
-    if not due_dt:
-        # malformed date -> be permissive (or change to strict error if desired)
-        return
-    now = datetime.utcnow()
-    if now > due_dt:
-        raise HTTPException(status_code=400, detail=f"Livrable fermé : date d'echeance {due_value} depassee")
 
 
 @jury_api.get("/profile")
@@ -290,11 +228,8 @@ async def list_promotion_timelines():
 @jury_api.post("/juries", response_model=JuryResponse, summary="Creer un jury")
 async def create_jury(payload: JuryCreateRequest):
     members = await _build_members(payload)
-    deliverable_id = _normalize_optional_id(payload.deliverable_id)
-    # Verify deliverable is still open before creating the jury (if deliverable specified)
-    await _ensure_deliverable_open(payload.promotion_id, payload.semester_id, deliverable_id)
     promotion_reference, semester_name = await _build_promotion_reference(
-        payload.promotion_id, payload.semester_id, deliverable_id
+        payload.promotion_id, payload.semester_id
     )
     now = datetime.utcnow()
     document = {
@@ -302,6 +237,7 @@ async def create_jury(payload: JuryCreateRequest):
         "semestre_reference": semester_name,
         "date": payload.date,
         "status": payload.status.value,
+        "note": payload.note,
         "members": members,
         "created_at": now,
         "updated_at": now,
@@ -337,10 +273,13 @@ async def update_jury(jury_id: str, payload: JuryUpdateRequest):
         updates["date"] = payload.date
     if payload.status is not None:
         updates["status"] = payload.status.value
+    if payload.note is not None:
+        if payload.note < 0 or payload.note > 20:
+            raise HTTPException(status_code=400, detail="La note doit etre comprise entre 0 et 20")
+        updates["note"] = round(float(payload.note), 2)
 
-    deliverable_id = _normalize_optional_id(payload.deliverable_id)
     needs_timeline_update = any(
-        value is not None for value in (payload.promotion_id, payload.semester_id, deliverable_id)
+        value is not None for value in (payload.promotion_id, payload.semester_id)
     )
 
     if needs_timeline_update or not current_document.get("promotion_reference"):
@@ -349,10 +288,8 @@ async def update_jury(jury_id: str, payload: JuryUpdateRequest):
         semester_id = payload.semester_id or base_reference.get("semester_id")
         if not promotion_id or not semester_id:
             raise HTTPException(status_code=400, detail="Promotion et semestre requis pour mettre a jour le jury")
-        # Ensure the selected deliverable (if any) is not expired
-        await _ensure_deliverable_open(promotion_id, semester_id, deliverable_id or base_reference.get("deliverable_id"))
         promotion_reference, semester_name = await _build_promotion_reference(
-            promotion_id, semester_id, deliverable_id or base_reference.get("deliverable_id")
+            promotion_id, semester_id
         )
         updates["promotion_reference"] = promotion_reference.model_dump()
         updates["semestre_reference"] = semester_name
