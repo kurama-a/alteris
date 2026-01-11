@@ -4,12 +4,17 @@ import {
   uploadApprenticeDocument,
   updateApprenticeDocument,
   addDocumentComment,
+  updateDocumentComment,
+  deleteDocumentComment,
   buildDownloadUrl,
   type ApprenticeDocumentsResponse,
   type JournalDocumentRecord,
   type DocumentComment,
   type DocumentUploadPayload,
+  type DocumentUpdatePayload,
   type DocumentCommentPayload,
+  type DocumentCommentUpdatePayload,
+  type DocumentCommentDeletePayload,
 } from "../api/documents";
 
 export type DocumentCategory =
@@ -72,12 +77,15 @@ export type DocumentsContextValue = {
     token?: string
   ) => Promise<JournalDocumentRecord>;
   updateApprenticeDocument: (
-    apprenticeId: string,
-    documentId: string,
-    file: File,
+    input: DocumentUpdatePayload,
     token?: string
   ) => Promise<JournalDocumentRecord>;
   addDocumentComment: (payload: DocumentCommentPayload, token?: string) => Promise<DocumentComment>;
+  updateDocumentComment: (
+    payload: DocumentCommentUpdatePayload,
+    token?: string
+  ) => Promise<DocumentComment>;
+  deleteDocumentComment: (payload: DocumentCommentDeletePayload, token?: string) => Promise<void>;
   getDownloadUrl: (documentId: string) => string;
 };
 
@@ -90,6 +98,8 @@ export function DocumentsProvider({ children }: { children: React.ReactNode }) {
       uploadApprenticeDocument,
       updateApprenticeDocument,
       addDocumentComment,
+      updateDocumentComment,
+      deleteDocumentComment,
       getDownloadUrl: buildDownloadUrl,
     }),
     []

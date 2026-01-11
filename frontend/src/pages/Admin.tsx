@@ -56,6 +56,7 @@ type CreateUserDraft = {
   lastName: string;
   email: string;
   phone: string;
+  age: string;
   anneeAcademique: string;
   password: string;
   role: string;
@@ -109,6 +110,7 @@ const createUserTemplate = (): CreateUserDraft => ({
   lastName: "",
   email: "",
   phone: "",
+  age: "",
   anneeAcademique: "",
   password: "",
   role: DEFAULT_ROLE_VALUE,
@@ -769,6 +771,7 @@ export default function Admin() {
           last_name: createDraft.lastName,
           email: createDraft.email,
           phone: createDraft.phone,
+          age: Number(createDraft.age) || 0,
           annee_academique: createDraft.anneeAcademique,
           password: createDraft.password,
           role: createDraft.role,
@@ -1199,6 +1202,17 @@ export default function Admin() {
                   value={createDraft.phone}
                   onChange={(event) => handleCreateChange("phone", event.target.value)}
                   style={inputStyle}
+                />
+              </label>
+              <label style={stackedFieldStyle}>
+                <span>Âge</span>
+                <input
+                  type="number"
+                  min={16}
+                  value={createDraft.age}
+                  onChange={(event) => handleCreateChange("age", event.target.value)}
+                  style={inputStyle}
+                  required
                 />
               </label>
               <label style={{ ...stackedFieldStyle, ...fullWidthFieldStyle }}>

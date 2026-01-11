@@ -39,7 +39,6 @@ class JuryBase(BaseModel):
 class JuryCreateRequest(JuryBase):
     promotion_id: str = Field(..., description="ID de la promotion liée")
     semester_id: str = Field(..., description="ID du semestre concerné")
-    deliverable_id: Optional[str] = Field(None, description="ID du livrable concerné (optionnel)")
     tuteur_id: str = Field(..., description="ID du tuteur pédagogique")
     professeur_id: str = Field(..., description="ID du professeur (référent)")
     apprenti_id: str = Field(..., description="ID de l'apprenti présenté")
@@ -49,7 +48,6 @@ class JuryCreateRequest(JuryBase):
 class JuryUpdateRequest(BaseModel):
     promotion_id: Optional[str] = Field(None, description="ID de la promotion liée")
     semester_id: Optional[str] = Field(None, description="ID du semestre concerné")
-    deliverable_id: Optional[str] = Field(None, description="ID du livrable concerné")
     date: Optional[datetime] = Field(None, description="Date et heure du passage du jury")
     status: Optional[JuryStatus] = Field(None, description="Statut du jury")
     tuteur_id: Optional[str] = Field(None, description="Nouveau tuteur pédagogique")
@@ -64,8 +62,9 @@ class JuryPromotionReference(BaseModel):
     label: Optional[str] = Field(None, description="Libellé de la promotion")
     semester_id: str = Field(..., description="ID du semestre")
     semester_name: str = Field(..., description="Nom du semestre")
-    deliverable_id: Optional[str] = Field(None, description="ID du livrable associé")
-    deliverable_title: Optional[str] = Field(None, description="Titre du livrable associé")
+
+    class Config:
+        extra = "ignore"
 
 
 class JuryResponse(JuryBase):
@@ -79,16 +78,9 @@ class JuryResponse(JuryBase):
     )
 
 
-class TimelineDeliverableOption(BaseModel):
-    deliverable_id: str = Field(..., description="ID du livrable")
-    title: str = Field(..., description="Titre du livrable")
-    due_date: Optional[str] = Field(None, description="Date d'échéance associée")
-
-
 class TimelineSemesterOption(BaseModel):
     semester_id: str = Field(..., description="ID du semestre")
     name: str = Field(..., description="Nom du semestre")
-    deliverables: List[TimelineDeliverableOption] = Field(default_factory=list)
 
 
 class JuryPromotionTimelineOption(BaseModel):

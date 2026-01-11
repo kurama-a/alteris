@@ -16,6 +16,10 @@ export type CompetencyLevelOption = {
 export type SemesterCompetencyRecord = {
   semester_id: string;
   name: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  is_active?: boolean;
+  status?: string;
   competencies: Array<{
     competency_id: string;
     level: CompetencyLevelValue | null;

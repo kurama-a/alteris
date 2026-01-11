@@ -55,7 +55,6 @@ type PromotionRecord = {
   label?: string;
   nb_apprentis?: number;
   coordinators?: string[];
-  next_milestone?: string | null;
   responsable_cursus?: ResponsableInfo | null;
   apprentis?: RawPromoMember[];
   semesters?: SemesterRecord[];
@@ -85,7 +84,6 @@ type FormValues = {
   anneeAcademique: string;
   label: string;
   coordinatorId: string;
-  nextMilestone: string;
   responsableId: string;
   semesters: SemesterFormValues[];
 };
@@ -133,7 +131,6 @@ const INITIAL_FORM_VALUES: FormValues = {
   anneeAcademique: "",
   label: "",
   coordinatorId: "",
-  nextMilestone: "",
   responsableId: "",
   semesters: [],
 };
@@ -614,13 +611,6 @@ export default function Promotions() {
     }
     const nextAlerts: Alert[] = [];
     promotions.forEach((promotion) => {
-      if (promotion.next_milestone) {
-        nextAlerts.push({
-          id: `${promotion.id}-milestone`,
-          level: "info",
-          message: `Prochaine étape pour ${toDisplayLabel(promotion)} : ${promotion.next_milestone}`,
-        });
-      }
       if (!promotion.nb_apprentis || promotion.nb_apprentis === 0) {
         nextAlerts.push({
           id: `${promotion.id}-warning`,
@@ -658,7 +648,6 @@ export default function Promotions() {
           annee_academique: formValues.anneeAcademique.trim(),
           label: formValues.label.trim() || undefined,
           coordinators: coordinatorId ? [coordinatorId] : [],
-          next_milestone: formValues.nextMilestone.trim() || undefined,
           responsable_id: formValues.responsableId || undefined,
           semesters: semestersPayload,
         }),
@@ -719,7 +708,6 @@ export default function Promotions() {
           annee_academique: promotion.annee_academique,
           label: promotion.label,
           coordinators: [coordinatriceId],
-          next_milestone: promotion.next_milestone || undefined,
           responsable_id: promotion.responsable_cursus?.responsable_cursus_id || undefined,
         }),
       });
@@ -903,15 +891,6 @@ export default function Promotions() {
             )}
           </label>
           <label>
-            Prochaine étape / jalon
-            <input
-              type="text"
-              value={formValues.nextMilestone}
-              onChange={(event) => handleFormChange("nextMilestone", event.target.value)}
-              placeholder="Jury intermédiaire - 12 mars"
-            />
-          </label>
-          <label>
             Responsable de cursus
             <select
               value={formValues.responsableId}
@@ -1014,10 +993,6 @@ export default function Promotions() {
                             .join(", ")
                         : "Non renseigné"}
                     </dd>
-                  </div>
-                  <div>
-                    <dt>Prochaine étape</dt>
-                    <dd>{promotion.next_milestone || "Non renseignée"}</dd>
                   </div>
                   <div>
                     <dt>Responsable de cursus</dt>

@@ -46,6 +46,30 @@ ROLE_REFERENCES = {
 }
 
 
+def _snake_to_camel_case(key: str) -> str:
+    parts = key.split("_")
+    if not parts:
+        return key
+    return parts[0] + "".join(word.capitalize() for word in parts[1:])
+
+
+def _extract_semester_value(raw: dict, key: str):
+    if not isinstance(raw, dict):
+        return None
+    candidates = [key]
+    camel_key = _snake_to_camel_case(key)
+    compact_key = key.replace("_", "")
+    if camel_key not in candidates:
+        candidates.append(camel_key)
+    if compact_key not in candidates:
+        candidates.append(compact_key)
+    for candidate in candidates:
+        value = raw.get(candidate)
+        if value not in (None, ""):
+            return value
+    return None
+
+
 def _serialize_semesters(raw_semesters):
     serialized = []
     if not raw_semesters:
@@ -66,8 +90,8 @@ def _serialize_semesters(raw_semesters):
         serialized.append({
             "semester_id": raw.get("semester_id") or raw.get("id"),
             "name": name,
-            "start_date": raw.get("start_date"),
-            "end_date": raw.get("end_date"),
+            "start_date": _extract_semester_value(raw, "start_date"),
+            "end_date": _extract_semester_value(raw, "end_date"),
             "order": raw.get("order", 0),
             "deliverables": deliverables,
         })
@@ -166,7 +190,19 @@ async def get_apprentis_by_annee_academique(annee_academique: str):
     updated = await collection_promo.find_one({"annee_academique": annee_academique})
     if not updated:
         raise HTTPException(status_code=500, detail="Impossible de générer la promotion demandée")
-    return updated
+    return _serialize_promotion_document(updated)
+
+
+async def _sync_promotion_apprentices_if_available(annee_academique: str):
+    """
+    Tentative de synchronisation des apprentis d'une promotion si l'année est déjà utilisée.
+    Ne bloque pas la création si aucun apprenti n'est encore associé.
+    """
+    try:
+        await get_apprentis_by_annee_academique(annee_academique)
+    except HTTPException as exc:
+        if exc.status_code not in (400, 404):
+            raise
 
 async def list_all_apprentis():
     """
@@ -343,7 +379,7 @@ async def create_or_update_promotion(payload: PromotionUpsertRequest):
         raise HTTPException(status_code=500, detail="Connexion DB absente")
 
     collection_promo = database.db["promos"]
-    await get_apprentis_by_annee_academique(payload.annee_academique)
+    await _sync_promotion_apprentices_if_available(payload.annee_academique)
 
     updates = {
         "label": payload.label or f"Promotion {payload.annee_academique}",

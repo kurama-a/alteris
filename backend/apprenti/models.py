@@ -21,6 +21,11 @@ class CreerEntretienRequest(BaseModel):
     sujet: str
 
 
+class UpdateEntretienNoteRequest(BaseModel):
+    tuteur_id: str
+    note: float
+
+
 class DocumentDefinitionModel(BaseModel):
     id: str
     label: str
@@ -35,6 +40,7 @@ class DocumentCommentModel(BaseModel):
     author_role: str
     content: str
     created_at: datetime
+    updated_at: Optional[datetime] = None
 
 
 class JournalDocumentModel(BaseModel):
@@ -80,6 +86,17 @@ class DocumentCommentRequest(BaseModel):
     author_name: str
     author_role: str
     content: str
+
+
+class DocumentCommentUpdateRequest(BaseModel):
+    author_id: str
+    author_role: str
+    content: str
+
+
+class DocumentCommentDeleteRequest(BaseModel):
+    author_id: str
+    author_role: str
 
 
 class CompetencyDefinitionModel(BaseModel):

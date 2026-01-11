@@ -1,5 +1,5 @@
 import React from "react";
-import { APPRENTI_API_URL, fetchJson } from "../config";
+import { APPRENTI_API_URL, ADMIN_API_URL, fetchJson } from "../config";
 import { useAuth, useCan } from "../auth/Permissions";
 import {
   fetchApprenticeCompetencies,
@@ -7,6 +7,7 @@ import {
   type ApprenticeCompetenciesResponse,
   type CompetencyLevelValue,
 } from "../api/competencies";
+import "../styles/entretiens.css";
 
 type ContactInfo = {
   tuteur_id?: string;
@@ -24,6 +25,7 @@ type Entretien = {
   sujet: string;
   date: string;
   created_at: string;
+  note?: number | null;
   tuteur?: ContactInfo;
   maitre?: ContactInfo;
 };
@@ -42,6 +44,18 @@ type SelectableApprentice = {
   id: string;
   fullName: string;
   email: string;
+};
+
+type AdminPromotion = {
+  id: string;
+  label?: string;
+  annee_academique?: string;
+  semesters?: Array<{
+    semester_id?: string;
+    id?: string;
+    start_date?: string | null;
+    end_date?: string | null;
+  }>;
 };
 
 const DEFAULT_COMPETENCY_LEVELS: { value: CompetencyLevelValue; label: string }[] = [
@@ -121,6 +135,9 @@ export default function Entretiens() {
   const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
 
   const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null);
+  const [noteDrafts, setNoteDrafts] = React.useState<Record<string, string>>({});
+  const [noteBusyMap, setNoteBusyMap] = React.useState<Record<string, boolean>>({});
+  const [noteError, setNoteError] = React.useState<string | null>(null);
 
   const [competencySummary, setCompetencySummary] =
     React.useState<ApprenticeCompetenciesResponse | null>(null);
@@ -134,6 +151,9 @@ export default function Entretiens() {
   );
   const [openCompetencySemesters, setOpenCompetencySemesters] = React.useState<
     Record<string, boolean>
+  >({});
+  const [promotionSemesters, setPromotionSemesters] = React.useState<
+    Record<string, { start_date?: string | null; end_date?: string | null }>
   >({});
 
   const buildCompetencyDraft = React.useCallback(
@@ -175,6 +195,8 @@ export default function Entretiens() {
   React.useEffect(() => {
     setIsFormVisible(false);
     setFormError(null);
+    setNoteDrafts({});
+    setNoteError(null);
   }, [selectedApprenticeId]);
 
   React.useEffect(() => {
@@ -200,6 +222,14 @@ export default function Entretiens() {
         if (cancelled) return;
         const next = payload.data?.entretiens ?? [];
         setEntretiens(next);
+        setNoteDrafts(
+          next.reduce<Record<string, string>>((acc, entretien) => {
+            if (typeof entretien.note === "number") {
+              acc[entretien.entretien_id] = entretien.note.toString();
+            }
+            return acc;
+          }, {})
+        );
       })
       .catch((err) => {
         if (cancelled) return;
@@ -254,6 +284,7 @@ export default function Entretiens() {
   React.useEffect(() => {
     if (!competencySummary) {
       setOpenCompetencySemesters({});
+      setPromotionSemesters({});
       return;
     }
     setOpenCompetencySemesters((current) => {
@@ -264,6 +295,43 @@ export default function Entretiens() {
       return next;
     });
   }, [competencySummary]);
+
+  React.useEffect(() => {
+    if (!token || !competencySummary?.promotion?.promotion_id) {
+      setPromotionSemesters({});
+      return;
+    }
+    let cancelled = false;
+    fetchJson<{ promotions: AdminPromotion[] }>(`${ADMIN_API_URL}/promos`, { token })
+      .then((payload) => {
+        if (cancelled) return;
+        const promotions = payload.promotions ?? [];
+        const match = promotions.find(
+          (promotion) => promotion.id === competencySummary.promotion.promotion_id
+        );
+        if (!match || !match.semesters) {
+          setPromotionSemesters({});
+          return;
+        }
+        const map: Record<string, { start_date?: string | null; end_date?: string | null }> = {};
+        match.semesters.forEach((semester) => {
+          const semesterKey = semester.semester_id ?? semester.id;
+          if (!semesterKey) return;
+          map[semesterKey] = {
+            start_date: semester.start_date ?? null,
+            end_date: semester.end_date ?? null,
+          };
+        });
+        setPromotionSemesters(map);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPromotionSemesters({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [competencySummary?.promotion?.promotion_id, token]);
 
   const sortedEntretiens = React.useMemo(() => {
     return [...entretiens].sort((a, b) => {
@@ -340,6 +408,45 @@ export default function Entretiens() {
     }
   };
 
+  const handleNoteChange = React.useCallback((entretienId: string, value: string) => {
+    setNoteDrafts((current) => ({ ...current, [entretienId]: value }));
+    setNoteError(null);
+  }, []);
+
+  const handleSaveNote = React.useCallback(
+    async (entretienId: string) => {
+      if (!token || !selectedApprenticeId) return;
+      const raw = noteDrafts[entretienId];
+      const parsed = Number(raw);
+      if (Number.isNaN(parsed) || parsed < 0 || parsed > 20) {
+        setNoteError("La note doit être un nombre compris entre 0 et 20.");
+        return;
+      }
+      setNoteBusyMap((current) => ({ ...current, [entretienId]: true }));
+      setNoteError(null);
+      try {
+        await fetchJson(`${APPRENTI_API_URL}/entretien/${selectedApprenticeId}/${entretienId}/note`, {
+          method: "POST",
+          token,
+          body: JSON.stringify({ tuteur_id: me.id, note: parsed }),
+        });
+        setNoteDrafts((current) => ({ ...current, [entretienId]: parsed.toString() }));
+        setEntretiens((current) =>
+          current.map((entretien) =>
+            entretien.entretien_id === entretienId ? { ...entretien, note: parsed } : entretien
+          )
+        );
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Impossible d'enregistrer la note pour cet entretien.";
+        setNoteError(message);
+      } finally {
+        setNoteBusyMap((current) => ({ ...current, [entretienId]: false }));
+      }
+    },
+    [APPRENTI_API_URL, me.id, noteDrafts, selectedApprenticeId, token]
+  );
+
   const handleCompetencyChange = React.useCallback(
     (semesterId: string, competencyId: string, level: string) => {
       setCompetencyDraft((current) => {
@@ -408,13 +515,11 @@ export default function Entretiens() {
     if (!contact) return null;
     const name = [contact.first_name, contact.last_name].filter(Boolean).join(" ").trim();
     return (
-      <div style={{ padding: "12px 0", borderTop: "1px solid #eef2ff" }}>
-        <p style={{ fontSize: 12, color: "#6366f1", textTransform: "uppercase", letterSpacing: 0.8 }}>
-          {title}
-        </p>
-        <p style={{ fontWeight: 600, margin: "4px 0" }}>{name || "Contact à compléter"}</p>
-        <p style={{ margin: 0, color: "#475569" }}>{contact.email || "Email non renseigné"}</p>
-        {contact.phone && <p style={{ margin: 0, color: "#475569" }}>{contact.phone}</p>}
+      <div className="entretien-contact">
+        <p className="entretien-contact-label">{title}</p>
+        <p className="entretien-contact-name">{name || "Contact a completer"}</p>
+        <p className="entretien-contact-line">{contact.email || "Email non renseigne"}</p>
+        {contact.phone && <p className="entretien-contact-line">{contact.phone}</p>}
       </div>
     );
   };
@@ -439,6 +544,15 @@ export default function Entretiens() {
     });
     return map;
   }, [competencySummary]);
+
+  const todayLabel = React.useMemo(() => {
+    return new Intl.DateTimeFormat("fr-FR", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).format(new Date());
+  }, []);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -614,6 +728,9 @@ export default function Entretiens() {
                 ? `Promotion ${competencySummary.promotion.label ?? competencySummary.promotion.annee_academique}`
                 : "Selectionnez un apprenti pour consulter la grille."}
             </p>
+            <p style={{ margin: "4px 0 0", color: "#94a3b8", fontSize: 13 }}>
+              Aujourd&apos;hui : <strong>{todayLabel}</strong>
+            </p>
           </div>
         </div>
         {competencyError && <p style={{ margin: 0, color: "#b91c1c" }}>{competencyError}</p>}
@@ -623,6 +740,94 @@ export default function Entretiens() {
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {competencySummary.semesters.map((semester) => {
               const semesterDraft = competencyDraft[semester.semester_id] ?? {};
+              const parseSemesterDate = (value?: string | null) => {
+                if (!value) return null;
+                const trimmed = value.trim();
+                if (!trimmed) return null;
+                const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                const slashMatch = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+                let date: Date | null = null;
+                if (isoMatch) {
+                  const [, year, month, day] = isoMatch;
+                  date = new Date(Number(year), Number(month) - 1, Number(day));
+                } else if (slashMatch) {
+                  const [, dayRaw, monthRaw, yearRaw] = slashMatch;
+                  const year = yearRaw.length === 2 ? Number(`20${yearRaw}`) : Number(yearRaw);
+                  date = new Date(year, Number(monthRaw) - 1, Number(dayRaw));
+                } else if (/^\d+$/.test(trimmed)) {
+                  date = new Date(Number(trimmed));
+                } else {
+                  const parsed = new Date(trimmed);
+                  if (!Number.isNaN(parsed.getTime())) {
+                    date = parsed;
+                  }
+                }
+                if (!date || Number.isNaN(date.getTime())) {
+                  return null;
+                }
+                date.setHours(0, 0, 0, 0);
+                return date;
+              };
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const externalSemester = promotionSemesters[semester.semester_id];
+              const startValue = externalSemester?.start_date ?? semester.start_date ?? null;
+              const endValue = externalSemester?.end_date ?? semester.end_date ?? null;
+              const startDate = parseSemesterDate(startValue);
+              const endDate = parseSemesterDate(endValue);
+              const rawStatus =
+                typeof semester.status === "string" ? semester.status.toLowerCase() : undefined;
+              const normalizedStatus = (() => {
+                if (startDate && endDate) {
+                  if (today < startDate) return "upcoming";
+                  if (today > endDate) return "closed";
+                  return "open";
+                }
+                if (startDate) {
+                  if (today < startDate) return "upcoming";
+                  return "open";
+                }
+                if (endDate) {
+                  if (today > endDate) return "closed";
+                  return "open";
+                }
+                if (rawStatus) return rawStatus;
+                if (semester.is_active) return "open";
+                return "upcoming";
+              })();
+              const isSemesterActive = normalizedStatus === "open";
+              const isOpen = openCompetencySemesters[semester.semester_id];
+              const isSemesterEditable = canEditCompetencies && isSemesterActive;
+              const startRaw =
+                typeof startValue === "string" && startValue.trim().length > 0
+                  ? startValue.trim()
+                  : null;
+              const endRaw =
+                typeof endValue === "string" && endValue.trim().length > 0
+                  ? endValue.trim()
+                  : null;
+              const startLabel = startDate
+                ? startDate.toLocaleDateString("fr-FR")
+                : startRaw ?? "—";
+              const endLabel = endDate ? endDate.toLocaleDateString("fr-FR") : endRaw ?? "—";
+              const statusLabel =
+                normalizedStatus === "closed"
+                  ? "Semestre clôturé"
+                  : normalizedStatus === "upcoming"
+                  ? "Semestre à venir"
+                  : "Semestre en cours";
+              const statusDescription =
+                normalizedStatus === "closed"
+                  ? "Ce semestre est clôturé. Les compétences restent visibles mais non modifiables."
+                  : normalizedStatus === "upcoming"
+                  ? "Ce semestre n'a pas encore débuté. Les compétences sont visibles en lecture seule."
+                  : null;
+              const statusTagStyle: React.CSSProperties =
+                normalizedStatus === "open"
+                  ? { background: "#dcfce7", color: "#166534", borderColor: "transparent" }
+                  : normalizedStatus === "closed"
+                  ? { background: "#fee2e2", color: "#b91c1c", borderColor: "transparent" }
+                  : { background: "#fef3c7", color: "#92400e", borderColor: "transparent" };
               return (
                 <article
                   key={semester.semester_id}
@@ -656,24 +861,38 @@ export default function Entretiens() {
                           background: "#fff",
                           cursor: "pointer",
                           fontWeight: 700,
-                          color: "#2563eb",
+                          color: isSemesterActive ? "#2563eb" : "#94a3b8",
                         }}
                         aria-label={
-                          openCompetencySemesters[semester.semester_id]
+                          isOpen
                             ? "Replier le semestre"
                             : "Deplier le semestre"
                         }
                       >
-                        {openCompetencySemesters[semester.semester_id] ? "-" : "+"}
+                        {isOpen ? "-" : "+"}
                       </button>
                       <div>
                         <h3 style={{ margin: 0 }}>{semester.name}</h3>
-                        <p style={{ margin: 0, color: "#64748b" }}>
-                          Complete par le maitre d'apprentissage
-                        </p>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <span
+                            style={{
+                              padding: "4px 10px",
+                              borderRadius: 999,
+                              border: "1px solid rgba(15, 23, 42, 0.08)",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              ...statusTagStyle,
+                            }}
+                          >
+                            {statusLabel}
+                          </span>
+                          <span style={{ color: "#94a3b8", fontSize: 13 }}>
+                            Début : <strong>{startLabel}</strong> • Fin : <strong>{endLabel}</strong>
+                          </span>
+                        </div>
                       </div>
                     </div>
-                    {canEditCompetencies && (
+                    {isSemesterEditable && (
                       <button
                         type="button"
                         onClick={() => handleSaveCompetencies(semester.semester_id)}
@@ -692,7 +911,10 @@ export default function Entretiens() {
                       </button>
                     )}
                   </header>
-                  {openCompetencySemesters[semester.semester_id] ? (
+                  {statusDescription ? (
+                    <p style={{ margin: 0, color: "#94a3b8" }}>{statusDescription}</p>
+                  ) : null}
+                  {isOpen ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                       {semester.competencies.map((entry) => {
                         const definition = competencyDefinitionMap.get(entry.competency_id);
@@ -733,7 +955,7 @@ export default function Entretiens() {
                                   </ul>
                                 ) : null}
                               </div>
-                              {canEditCompetencies ? (
+                              {isSemesterEditable ? (
                                 <select
                                   value={fieldValue}
                                   onChange={(event) =>
@@ -801,6 +1023,20 @@ export default function Entretiens() {
           {error}
         </div>
       )}
+      {noteError && (
+        <div
+          style={{
+            border: "1px solid #fcd34d",
+            background: "#fffbeb",
+            color: "#92400e",
+            padding: "12px 16px",
+            borderRadius: 8,
+          }}
+        >
+          {noteError}
+        </div>
+      )}
+
 
       {selectedApprentice && !isLoading && entretiens.length === 0 && !error ? (
         <div
@@ -818,58 +1054,74 @@ export default function Entretiens() {
       ) : isLoading ? (
         <p>Chargement des entretiens...</p>
       ) : sortedEntretiens.length > 0 ? (
-        <div
-          style={{
-            display: "grid",
-            gap: 20,
-            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-          }}
-        >
-          {sortedEntretiens.map((entretien) => (
-            <article
-              key={entretien.entretien_id}
-              style={{
-                border: "1px solid #e2e8f0",
-                borderRadius: 16,
-                padding: 20,
-                background: "#fff",
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-                boxShadow: "0 12px 30px -20px rgba(15, 23, 42, 0.4)",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                <div>
-                  <p style={{ margin: 0, fontSize: 12, textTransform: "uppercase", color: "#6366f1" }}>
-                    {formatDateTime(entretien.date)}
-                  </p>
-                  <h3 style={{ margin: "4px 0 0", fontSize: 18 }}>{entretien.sujet}</h3>
+        <div className="entretiens-grid">
+          {sortedEntretiens.map((entretien) => {
+            const isTutorForMeeting = entretien.tuteur?.tuteur_id === me.id;
+            const draftValue =
+              noteDrafts[entretien.entretien_id] ??
+              (typeof entretien.note === "number" ? entretien.note.toString() : "");
+            const displayNote =
+              typeof entretien.note === "number" ? `${entretien.note.toFixed(1)} / 20` : "Non évalué";
+            const isSavingNote = Boolean(noteBusyMap[entretien.entretien_id]);
+            return (
+              <article key={entretien.entretien_id} className="entretien-card">
+                <header className="entretien-card-header">
+                  <div>
+                    <p className="entretien-card-date">{formatDateTime(entretien.date)}</p>
+                    <h3 className="entretien-card-title">{entretien.sujet}</h3>
+                    <p className="entretien-card-meta">
+                      Créé le {formatDateTime(entretien.created_at)}
+                    </p>
+                  </div>
+                  {canModifySelected && (
+                    <button
+                      type="button"
+                      className="entretien-delete"
+                      onClick={() => handleDelete(entretien.entretien_id)}
+                      disabled={pendingDeleteId === entretien.entretien_id}
+                    >
+                      {pendingDeleteId === entretien.entretien_id ? "..." : "Supprimer"}
+                    </button>
+                  )}
+                </header>
+                <div className="entretien-card-body">
+                  {renderContact(entretien.tuteur, "Tuteur entreprise")}
+                  {renderContact(entretien.maitre, "Maitre d'apprentissage")}
                 </div>
-                {canModifySelected && (
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(entretien.entretien_id)}
-                    disabled={pendingDeleteId === entretien.entretien_id}
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      color: "#dc2626",
-                      cursor: pendingDeleteId === entretien.entretien_id ? "wait" : "pointer",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {pendingDeleteId === entretien.entretien_id ? "..." : "Supprimer"}
-                  </button>
-                )}
-              </div>
-              <p style={{ margin: 0, color: "#475569" }}>
-                Créé le {formatDateTime(entretien.created_at)}
-              </p>
-              {renderContact(entretien.tuteur, "Tuteur entreprise")}
-              {renderContact(entretien.maitre, "Maître d'apprentissage")}
-            </article>
-          ))}
+                <div className="entretien-note-section">
+                  <span className="entretien-note-label">Note du tuteur</span>
+                  {isTutorForMeeting ? (
+                    <>
+                      <div className="entretien-note-inputs">
+                        <input
+                          type="number"
+                          min={0}
+                          max={20}
+                          step={0.5}
+                          value={draftValue}
+                          onChange={(event) => handleNoteChange(entretien.entretien_id, event.target.value)}
+                          placeholder="ex: 15"
+                        />
+                        <span className="entretien-note-hint">/20</span>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveNote(entretien.entretien_id)}
+                          disabled={isSavingNote}
+                        >
+                          {isSavingNote ? "Enregistrement..." : "Enregistrer"}
+                        </button>
+                      </div>
+                      <p className="entretien-note-hint">
+                        Cette note n'est visible que par le tuteur et la coordination.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="entretien-note-display">{displayNote}</p>
+                  )}
+                </div>
+              </article>
+            );
+          })}
         </div>
       ) : null}
     </div>
