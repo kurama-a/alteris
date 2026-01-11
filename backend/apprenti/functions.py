@@ -594,10 +594,32 @@ def _promotion_collection():
     return database.db["promos"]
 
 
-def _allowed_extensions(category: str) -> List[str]:
+def _match_definition_by_label(label: str) -> Optional[Dict[str, Any]]:
+    normalized = (label or "").lower()
+    if "rapport" in normalized:
+        target = "rapport"
+    elif "presentation" in normalized or "presentation" in normalized.replace("é", "e"):
+        target = "presentation"
+    elif "fiche" in normalized:
+        target = "fiche-synthese"
+    elif "note" in normalized:
+        target = "notes-mensuelles"
+    else:
+        return None
+    return next((definition for definition in DOCUMENT_DEFINITIONS if definition["id"] == target), None)
+
+
+def _allowed_extensions(category: str, promotion: Optional[Dict[str, Any]] = None, semester_id: Optional[str] = None) -> List[str]:
     for definition in DOCUMENT_DEFINITIONS:
         if definition["id"] == category:
             return definition["extensions"]
+    if promotion and semester_id:
+        deliverable = _find_deliverable_for_semester(promotion, semester_id, category)
+        if deliverable:
+            label = deliverable.get("title") or deliverable.get("label") or ""
+            matched = _match_definition_by_label(label)
+            if matched:
+                return matched["extensions"]
     raise HTTPException(status_code=400, detail="Categorie de document inconnue")
 
 
@@ -844,7 +866,7 @@ async def create_journal_document(
         if due_dt and datetime.utcnow() > due_dt:
             raise HTTPException(status_code=400, detail=f"Depot refuse : livrable '{matching.get('title') or category}' ferme depuis {due_val}")
     # Vérifie l'extension autorisée pour la catégorie de document
-    allowed_extensions = _allowed_extensions(category)
+    allowed_extensions = _allowed_extensions(category, promotion, semester_id)
     original_name = upload.filename or "document"
     extension = Path(original_name).suffix.lower()
     if extension not in allowed_extensions:
@@ -893,6 +915,7 @@ async def update_journal_document(
     apprenti_id: str,
     document_id: str,
     upload: UploadFile,
+    uploader_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     documents_collection = _documents_collection()
     document = await documents_collection.find_one({"_id": ObjectId(document_id)})
@@ -910,7 +933,7 @@ async def update_journal_document(
         if due_dt and datetime.utcnow() > due_dt:
             raise HTTPException(status_code=400, detail=f"Mise a jour refusee : livrable '{matching.get('title') or document.get('category')}' ferme depuis {due_val}")
 
-    allowed_extensions = _allowed_extensions(document.get("category"))
+    allowed_extensions = _allowed_extensions(document.get("category"), promotion, document.get("semester_id"))
     original_name = upload.filename or document.get("file_name") or "document"
     extension = Path(original_name).suffix.lower()
     if extension not in allowed_extensions:
@@ -930,7 +953,7 @@ async def update_journal_document(
         if old_path.exists() and old_path != file_path:
             old_path.unlink(missing_ok=True)
 
-    # Met à jour les métadonnées du document en base (taille, type, chemin, date)
+    # Met a jour les metadonnees du document en base (taille, type, chemin, date)
     updates = {
         "file_name": original_name,
         "file_size": file_path.stat().st_size,
@@ -938,6 +961,8 @@ async def update_journal_document(
         "file_path": str(file_path.relative_to(DOCUMENT_STORAGE)),
         "uploaded_at": datetime.utcnow(),
     }
+    if uploader_id:
+        updates["uploader.id"] = uploader_id
     await documents_collection.update_one({"_id": document["_id"]}, {"$set": updates})
     document.update(updates)
     return _serialize_document(document)

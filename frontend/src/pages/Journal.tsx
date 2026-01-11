@@ -180,6 +180,7 @@ export default function Journal() {
   const [isLoadingDocuments, setIsLoadingDocuments] = React.useState(false);
   const [documentsError, setDocumentsError] = React.useState<string | null>(null);
   const [uploadingDocumentKey, setUploadingDocumentKey] = React.useState<string | null>(null);
+  const [uploadErrorMap, setUploadErrorMap] = React.useState<Record<string, string>>({});
   const [commentInputs, setCommentInputs] = React.useState<Record<string, string>>({});
   const [commentBusyMap, setCommentBusyMap] = React.useState<Record<string, boolean>>({});
   const [commentEditValues, setCommentEditValues] = React.useState<Record<string, string>>({});
@@ -228,6 +229,8 @@ export default function Journal() {
         error instanceof Error ? error.message : "Impossible de charger les documents.";
       setDocumentsData(null);
       setDocumentsError(message);
+        setUploadErrorMap((current) => ({ ...current, [key]: message }));
+        setUploadErrorMap((current) => ({ ...current, [key]: message }));
     } finally {
       setIsLoadingDocuments(false);
     }
@@ -251,6 +254,7 @@ export default function Journal() {
       if (!selectedId || !token || !canEditDocuments) return;
       const key = `${semesterId}-${category}`;
       setUploadingDocumentKey(key);
+      setUploadErrorMap((current) => ({ ...current, [key]: "" }));
       setDocumentsError(null);
       try {
         await uploadDocumentApi(
@@ -269,7 +273,9 @@ export default function Journal() {
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Le depot du document a echoue.";
+        
         setDocumentsError(message);
+        setUploadErrorMap((current) => ({ ...current, [key]: message }));
       } finally {
         setUploadingDocumentKey(null);
       }
@@ -282,6 +288,7 @@ export default function Journal() {
       if (!selectedId || !token || !canEditDocuments) return;
       const key = `${semesterId}-${category}`;
       setUploadingDocumentKey(key);
+      setUploadErrorMap((current) => ({ ...current, [key]: "" }));
       setDocumentsError(null);
       try {
         await updateDocumentApi(
@@ -298,6 +305,7 @@ export default function Journal() {
         const message =
           error instanceof Error ? error.message : "La mise a jour du document a echoue.";
         setDocumentsError(message);
+        setUploadErrorMap((current) => ({ ...current, [key]: message }));
       } finally {
         setUploadingDocumentKey(null);
       }
@@ -759,6 +767,7 @@ export default function Journal() {
                   );
                   const uploadKey = `${semester.semester_id}-${definition.id}`;
                   const isUploading = uploadingDocumentKey === uploadKey;
+                  const uploadError = uploadErrorMap[uploadKey];
                   return (
                     <article key={`${semester.semester_id}-${definition.id}`} className="documents-card">
                       <header className="documents-card-header">
@@ -933,6 +942,11 @@ export default function Journal() {
                           Aucun document déposé pour le moment.
                         </p>
                       )}
+                      {uploadError ? (
+                        <p className="documents-error" style={{ marginTop: 8 }}>
+                          {uploadError}
+                        </p>
+                      ) : null}
                     </article>
                   );
                 })}

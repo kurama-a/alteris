@@ -11,7 +11,11 @@ import "../styles/juries.css";
 const JURY_CATEGORY_MATCHERS = ["presentation", "rapport"];
 
 const isJuryCategory = (value?: string | null) => {
-  const normalized = (value ?? "").toLowerCase().trim();
+  const normalized = (value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
   return JURY_CATEGORY_MATCHERS.some((match) => normalized.includes(match));
 };
 
