@@ -1,0 +1,151 @@
+/* --- Structure principale --- */
+.layout-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  font-family: "Inter", "Roboto", sans-serif;
+  background-color: #f9fafb;
+}
+
+/* --- Barre de navigation --- */
+.navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 28px;
+  background: linear-gradient(90deg, #ffffff 30%, #eef4ff 100%);
+  border-bottom: 1px solid #e0e7ff;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.08);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+/* Logo */
+.logo-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+}
+
+.navbar-logo {
+  height: 48px;
+  width: 48px;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.15);
+}
+
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.logo-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 0.02em;
+}
+
+.logo-tagline {
+  font-size: 12px;
+  color: #475569;
+}
+
+/* Liens du menu */
+.navbar-center {
+  display: flex;
+  gap: 18px;
+}
+
+.nav-link {
+  text-decoration: none;
+  color: #475569;
+  font-weight: 600;
+  font-size: 15px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  transition: color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+}
+
+.nav-link:hover {
+  color: #1d4ed8;
+  transform: translateY(-1px);
+}
+
+.nav-link.active {
+  background: #e0ebff;
+  color: #1d4ed8;
+}
+
+.nav-link-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+}
+
+.nav-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* --- Infos utilisateur --- */
+.navbar-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  gap: 2px;
+}
+
+.user-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.user-email {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.user-role {
+  font-size: 12px;
+  font-weight: 500;
+  color: #334155;
+}
+
+.logout-button {
+  margin-top: 6px;
+  background: #ffe4e6;
+  border: none;
+  color: #be123c;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 999px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.logout-button:hover {
+  box-shadow: 0 6px 14px rgba(190, 18, 60, 0.25);
+  transform: translateY(-1px);
+}
+
+/* --- Contenu principal --- */
+.main-content {
+  flex: 1;
+  padding: 24px;
+}
