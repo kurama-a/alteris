@@ -695,6 +695,15 @@ async def create_journal_document(
 
     # Insert le méta-document en base (le fichier est déjà écrit sur disque)
     await _documents_collection().insert_one(document_record)
+    # Envoie une notification et un e-mail au titulaire de l'apprenti (si email present)
+    try:
+        from common.notifications import create_notification, notify_user_via_email
+        # notification pour l'apprenti
+        await create_notification(apprenti_id, f"Nouveau document de type {category} depose: {original_name}", {"document_id": str(document_id)})
+        # envoi d'e-mail (best-effort)
+        notify_user_via_email(apprenti.get("email"), "Nouveau document depose", f"Un nouveau document ({original_name}) a ete depose pour vous dans la promotion {promotion.get('annee_academique')}")
+    except Exception:
+        pass
     # Retourne la représentation sérialisée côté API
     return _serialize_document(document_record)
 
