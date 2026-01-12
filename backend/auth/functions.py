@@ -1,5 +1,3 @@
-auth/function.py 
-
 import unicodedata
 import string
 import random
@@ -337,13 +335,34 @@ async def login_user(req: LoginRequest) -> Dict:
 
             # Génération des notifications d'echeance pour l'utilisateur (si apprenti)
             try:
-                from common.notifications import get_unread_notifications_for_user, generate_due_notifications_for_apprenti
+                from common.notifications import (
+                    get_unread_notifications_for_user,
+                    generate_due_notifications_for_apprenti,
+                    generate_due_notifications_for_supervisor,
+                )
+                # For apprentices: generate their own due notifications (best-effort)
                 if role == "apprenti":
-                    # create due-date notifications for this apprenti (best-effort, async helper)
                     try:
-                        await generate_due_notifications_for_apprenti(user)
+                        await generate_due_notifications_for_apprenti(user, days_before=7)
                     except Exception:
                         pass
+
+                # For supervisor roles, generate notifications concerning their apprentices
+                supervisor_roles = {
+                    "tuteur",
+                    "tuteur_pedagogique",
+                    "maitre",
+                    "maitre_apprentissage",
+                    "responsable_cursus",
+                    "responsableformation",
+                    "entreprise",
+                }
+                if role in supervisor_roles:
+                    try:
+                        await generate_due_notifications_for_supervisor(user, role, days_before=7)
+                    except Exception:
+                        pass
+
                 notifications = await get_unread_notifications_for_user(user.get("_id") and str(user.get("_id")) or user.get("_id") or user.get("email"))
             except Exception:
                 notifications = []
