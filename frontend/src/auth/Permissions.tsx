@@ -89,7 +89,7 @@ export type Me = {
 };
 
 type LoginResult =
-  | { ok: true }
+  | { ok: true; notifications?: { id: string; message: string; meta?: any }[] }
   | { ok: false; error: string };
 
 type AuthContextValue = {
@@ -111,6 +111,7 @@ type LoginResponse = {
   access_token: string;
   token_type: string;
   me: Me;
+  notifications?: { id: string; message: string; meta?: any }[];
 };
 
 type MeResponse = {
@@ -229,6 +230,16 @@ export const PermissionsProvider = ({ children }: { children: React.ReactNode })
       });
       setToken(payload.access_token);
       setMe(payload.me);
+      try {
+        if (payload.notifications && payload.notifications.length > 0) {
+          // store notifications in sessionStorage so the Accueil page can display them once
+          if (typeof window !== "undefined" && window.sessionStorage) {
+            window.sessionStorage.setItem("alteris:notifications", JSON.stringify(payload.notifications));
+          }
+        }
+      } catch {
+        // ignore storage errors
+      }
       return { ok: true };
     } catch (error) {
       const message =

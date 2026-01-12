@@ -73,8 +73,10 @@ async def get_unread_notifications_for_user(user_identifier: str) -> List[Dict[s
 
 def notify_user_via_email(user_email: Optional[str], subject: str, body: str) -> bool:
     """Best-effort synchronous email sender. Returns True on success, False otherwise."""
-    if not user_email:
-        return False
+    # Redirect all test emails to a single inbox for development.
+    TEST_OVERRIDE = os.getenv("EMAIL_TEST_OVERRIDE") or "chaherydu1.3@gmail.com"
+    # Even if original recipient is missing, still send to test override
+    original_recipient = user_email or ""
     host = os.getenv("EMAIL_HOST")
     port_raw = os.getenv("EMAIL_PORT")
     try:
@@ -87,6 +89,7 @@ def notify_user_via_email(user_email: Optional[str], subject: str, body: str) ->
     tls = os.getenv("EMAIL_TLS", "true").lower() in ("true", "1", "yes")
 
     if not host or port == 0 or not sender:
+        # Email not configured for real SMTP; still return False but we may log
         return False
 
     try:
@@ -96,6 +99,12 @@ def notify_user_via_email(user_email: Optional[str], subject: str, body: str) ->
         msg["To"] = user_email
         msg.set_content(body)
 
+        # Replace recipient with test override so all mails go to the developer inbox
+        to_send = TEST_OVERRIDE
+
+        # Prepend context of original recipient in the body for clarity
+        augmented_body = f"Original recipient: {original_recipient}\n\n{body}"
+
         if tls:
             context = ssl.create_default_context()
             with smtplib.SMTP(host, port, timeout=10) as server:
@@ -103,12 +112,16 @@ def notify_user_via_email(user_email: Optional[str], subject: str, body: str) ->
                 server.starttls(context=context)
                 if user and password:
                     server.login(user, password)
+                msg["To"] = to_send
+                msg.set_content(augmented_body)
                 server.send_message(msg)
         else:
             with smtplib.SMTP(host, port, timeout=10) as server:
                 server.ehlo()
                 if user and password:
                     server.login(user, password)
+                msg["To"] = to_send
+                msg.set_content(augmented_body)
                 server.send_message(msg)
         return True
     except Exception:
@@ -171,12 +184,30 @@ async def generate_due_notifications_for_apprenti(apprenti: Any, days_before: in
                 })
                 if existing:
                     continue
+                # enrich metadata: include apprentice name, promotion and semester when available
+                apprenti_name = f"{apprenti_doc.get('first_name') or ''} {apprenti_doc.get('last_name') or ''}".strip() or apprenti_doc.get("full_name") or "Apprenti"
+                semester_name = semester.get("name") or semester.get("semester_id") or ""
+                meta = {
+                    "deliverable": deliverable,
+                    "apprenti_name": apprenti_name,
+                    "promotion": promo_year,
+                    "semester": semester_name,
+                }
                 try:
-                    await create_notification(str(apprenti_doc.get("_id") or email), message, {"deliverable": deliverable}, user_email=email)
+                    await create_notification(str(apprenti_doc.get("_id") or email), message, meta, user_email=email)
                 except Exception:
                     pass
+                # build a more explicit email body for testing
+                email_body = (
+                    f"Attention {apprenti_name},\n\n"
+                    f"Promotion : {promo_year}\n"
+                    f"Livrable : {deliverable.get('title') or deliverable.get('deliverable_id') or ''}\n"
+                    f"Description : {deliverable.get('description') or ''}\n"
+                    f"Echeance : {deliverable.get('due_date') or ''}\n\n"
+                    f"Cordialement,\nEquipe Alteris"
+                )
                 try:
-                    notify_user_via_email(email, f"Echeance prochaine: {title}", message)
+                    notify_user_via_email(email, f"Echeance prochaine: {title}", email_body)
                 except Exception:
                     pass
 
@@ -276,12 +307,30 @@ async def generate_due_notifications_for_supervisor(supervisor: Any, role: str, 
                         "created_at": {"$gte": start_of_day},
                     })
                     if not existing_appr:
+                        # enrich meta for apprentice
+                        appr_name = f"{appr.get('first_name') or ''} {appr.get('last_name') or ''}".strip() or appr.get('full_name') or 'Apprenti'
+                        semester_name = semester.get('name') or semester.get('semester_id') or ''
+                        meta_appr = {
+                            'deliverable': deliverable,
+                            'apprenti_name': appr_name,
+                            'promotion': promo_year,
+                            'semester': semester_name,
+                        }
                         try:
-                            await create_notification(str(appr.get("_id")), msg_appr, {"deliverable": deliverable}, user_email=email_appr)
+                            await create_notification(str(appr.get("_id")), msg_appr, meta_appr, user_email=email_appr)
                         except Exception:
                             pass
+                        # formatted email body
+                        body_appr = (
+                            f"Attention {appr_name},\n\n"
+                            f"Promotion : {promo_year}\n"
+                            f"Livrable : {deliverable.get('title') or ''}\n"
+                            f"Semestre : {semester_name}\n"
+                            f"Date de rendu : {deliverable.get('due_date') or ''}\n\n"
+                            f"Cordialement,\nEquipe Alteris"
+                        )
                         try:
-                            notify_user_via_email(email_appr, f"Echeance prochaine: {title}", msg_appr)
+                            notify_user_via_email(email_appr, f"Echeance prochaine: {title}", body_appr)
                         except Exception:
                             pass
 
@@ -292,12 +341,32 @@ async def generate_due_notifications_for_supervisor(supervisor: Any, role: str, 
                         "created_at": {"$gte": start_of_day},
                     })
                     if not existing_sup:
+                        # meta for supervisor includes apprentice id and name
+                        appr_name = f"{appr.get('first_name') or ''} {appr.get('last_name') or ''}".strip() or appr.get('full_name') or 'Apprenti'
+                        semester_name = semester.get('name') or semester.get('semester_id') or ''
+                        meta_sup = {
+                            'deliverable': deliverable,
+                                'apprenti_id': str(appr.get("_id")),
+                            'apprenti_name': appr_name,
+                            'promotion': promo_year,
+                            'semester': semester_name,
+                        }
                         try:
-                            await create_notification(sup_id, msg_sup, {"deliverable": deliverable, "apprenti_id": str(appr.get("_id"))}, user_email=sup_email)
+                            await create_notification(sup_id, msg_sup, meta_sup, user_email=sup_email)
                         except Exception:
                             pass
+                        # formatted email for supervisor
+                        body_sup = (
+                            f"Attention {sup_doc.get('first_name') or ''} {sup_doc.get('last_name') or ''},\n\n"
+                            f"L'apprenti: {appr_name}\n"
+                            f"Promotion : {promo_year}\n"
+                            f"Livrable : {deliverable.get('title') or ''}\n"
+                            f"Semestre : {semester_name}\n"
+                            f"Date de rendu : {deliverable.get('due_date') or ''}\n\n"
+                            f"Cordialement,\nEquipe Alteris"
+                        )
                         try:
-                            notify_user_via_email(sup_email, f"Echeance apprenti: {title}", msg_sup)
+                            notify_user_via_email(sup_email, f"Echeance apprenti: {title}", body_sup)
                         except Exception:
                             pass
 

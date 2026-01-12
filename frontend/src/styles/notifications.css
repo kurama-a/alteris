@@ -1,0 +1,28 @@
+/* Simple notification popup box */
+.notif-popup-container {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1200;
+  width: 320px;
+  max-width: calc(100% - 2rem);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+  border-radius: 8px;
+  background: #fff;
+  color: #111;
+  overflow: hidden;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+.notif-popup-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #eee;
+  background: linear-gradient(90deg,#0ea5e9,#06b6d4);
+  color: white;
+}
+.notif-popup-list { padding: 0.5rem 0.5rem 0.75rem 0.5rem; }
+.notif-item { padding: 0.5rem; border-radius:6px; background:#f8fafc; margin-bottom:0.5rem; }
+.notif-item small { display:block; color:#555; margin-top:0.25rem; }
+.notif-close { background:transparent; border:0; color:white; cursor:pointer; font-weight:600 }

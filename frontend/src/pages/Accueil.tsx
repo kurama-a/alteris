@@ -2,6 +2,7 @@ import React from "react";
 import { useAuth, useMe } from "../auth/Permissions";
 import { ADMIN_API_URL, fetchJson } from "../config";
 import "../styles/accueil.css";
+import "../styles/notifications.css";
 
 type PromotionDeliverable = {
   deliverable_id?: string;
@@ -104,6 +105,9 @@ function buildSemesterKey(promotionId: string, semester: PromotionSemester, fall
 export default function Accueil() {
   const me = useMe();
   const { token } = useAuth();
+  const [loginNotifications, setLoginNotifications] = React.useState<
+    { id: string; message: string; meta?: any }[] | null
+  >(null);
   const [deliverables, setDeliverables] = React.useState<CalendarDeliverable[]>([]);
   const [semesterRanges, setSemesterRanges] = React.useState<CalendarSemesterRange[]>([]);
   const [calendarError, setCalendarError] = React.useState<string | null>(null);
@@ -129,6 +133,23 @@ export default function Accueil() {
   const isApprentice = normalizedRoles.has("apprenti");
 
   React.useEffect(() => {
+    // on mount, consume any notifications stored at login
+    try {
+      if (typeof window !== "undefined" && window.sessionStorage) {
+        const raw = window.sessionStorage.getItem("alteris:notifications");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setLoginNotifications(parsed as { id: string; message: string }[]);
+          }
+        }
+        // remove after reading so it's shown only once
+        window.sessionStorage.removeItem("alteris:notifications");
+      }
+    } catch {
+      // ignore
+    }
+
     if (!token) {
       setDeliverables([]);
       setSemesterRanges([]);
@@ -242,6 +263,8 @@ export default function Accueil() {
     };
   }, [token, me.anneeAcademique, isApprentice]);
 
+  const dismissLoginNotifications = React.useCallback(() => setLoginNotifications(null), []);
+
   const eventsByDate = React.useMemo(() => {
     const map: Record<string, CalendarDeliverable[]> = {};
     deliverables.forEach((deliverable) => {
@@ -286,6 +309,24 @@ export default function Accueil() {
 
   return (
     <main className="accueil">
+      {loginNotifications && loginNotifications.length > 0 ? (
+        <div className="notif-popup-container" role="dialog" aria-live="polite">
+          <div className="notif-popup-header">
+            <div>Notifications</div>
+            <button className="notif-close" aria-label="Fermer" onClick={dismissLoginNotifications}>
+              ×
+            </button>
+          </div>
+          <div className="notif-popup-list">
+            {loginNotifications.map((n) => (
+              <div key={n.id} className="notif-item">
+                <div>{n.message}</div>
+                {n.meta ? <small>{JSON.stringify(n.meta)}</small> : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <section className="accueil-hero">
         <img
           className="accueil-hero-image"
