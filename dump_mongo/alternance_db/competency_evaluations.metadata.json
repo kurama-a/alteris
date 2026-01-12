@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"}],"uuid":"c6767f20777e4435b971f101c3486c0e","collectionName":"competency_evaluations","type":"collection"}
