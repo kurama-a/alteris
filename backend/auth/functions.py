@@ -1,3 +1,5 @@
+auth/function.py 
+
 import unicodedata
 import string
 import random
@@ -333,6 +335,19 @@ async def login_user(req: LoginRequest) -> Dict:
 
             await enrich_me_with_apprentices(me, role, user)
 
+            # Génération des notifications d'echeance pour l'utilisateur (si apprenti)
+            try:
+                from common.notifications import get_unread_notifications_for_user, generate_due_notifications_for_apprenti
+                if role == "apprenti":
+                    # create due-date notifications for this apprenti (best-effort, async helper)
+                    try:
+                        await generate_due_notifications_for_apprenti(user)
+                    except Exception:
+                        pass
+                notifications = await get_unread_notifications_for_user(user.get("_id") and str(user.get("_id")) or user.get("_id") or user.get("email"))
+            except Exception:
+                notifications = []
+
             access_token = create_access_token(
                 {
                     "sub": me["email"],
@@ -346,6 +361,7 @@ async def login_user(req: LoginRequest) -> Dict:
                 "access_token": access_token,
                 "token_type": "bearer",
                 "me": me,
+                "notifications": notifications,
             }
 
     raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
@@ -574,5 +590,6 @@ async def recover_password_for_role(req: PasswordRecoveryRequest) -> Dict:
         "new_password": new_password,
         "message": f"Mot de passe réinitialisé pour {role}"
     }
+
 
 
