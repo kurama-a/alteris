@@ -192,7 +192,13 @@ export default function Juries() {
     );
   }, [me.roleLabel, normalizedRoles]);
 
-  const isApprentice = normalizedRoles.includes("apprentie");
+  const isApprentice = normalizedRoles.some(
+    (role) =>
+      role.includes("apprenti") ||
+      role.includes("apprentie") ||
+      role.includes("apprentis") ||
+      role.includes("alternant")
+  );
 
   const canManageJuries = React.useMemo(() => {
     if (normalizedRoles.some((role) => role.includes("admin"))) return true;
@@ -201,15 +207,23 @@ export default function Juries() {
     return me.perms.includes("user:manage") || me.perms.includes("promotion:manage");
   }, [me.perms, normalizedRoles]);
 
-  const canAccessPage = isJuryMember || isApprentice || canManageJuries;
+  const canAccessPage =
+    me.perms.includes("jury:read") || isJuryMember || isApprentice || canManageJuries;
 
   const accessibleJuries = React.useMemo(() => {
     if (canManageJuries) return juries;
     const userId = me.id;
+    const userEmail = me.email?.toLowerCase() ?? "";
     return juries.filter((jury) =>
-      Object.values(jury.members).some((member) => member.user_id === userId)
+      Object.values(jury.members).some((member) => {
+        if (member.user_id === userId) return true;
+        if (userEmail && member.email) {
+          return member.email.toLowerCase() === userEmail;
+        }
+        return false;
+      })
     );
-  }, [canManageJuries, juries, me.id]);
+  }, [canManageJuries, juries, me.email, me.id]);
 
   const juriesToDisplay = React.useMemo(() => {
     if (canManageJuries && selectedApprenticeId) {
@@ -298,21 +312,34 @@ export default function Juries() {
           const lookups: Record<string, StoredDocument[]> = {};
           (payload.semesters ?? []).forEach((semester) => {
             const deliverableLabelById = new Map<string, string>();
+            const juryDeliverableIds = new Set<string>();
             (semester.deliverables ?? []).forEach((deliverable) => {
-              if (deliverable.id) {
-                deliverableLabelById.set(
-                  deliverable.id.toString(),
-                  (deliverable.label ?? "").toString()
-                );
+              if (!deliverable.id) return;
+              const deliverableId = deliverable.id.toString();
+              const label = (deliverable.label ?? "").toString();
+              const description = (deliverable.description ?? "").toString();
+              deliverableLabelById.set(deliverableId, label);
+              if (isJuryCategory(label) || isJuryCategory(description)) {
+                juryDeliverableIds.add(deliverableId);
               }
             });
-            const filteredDocs = (semester.documents ?? []).filter((doc) => {
-              if (isJuryCategory(doc.category)) {
+            const documents = semester.documents ?? [];
+            let filteredDocs = documents.filter((doc) => {
+              const categoryValue = doc.category?.toString();
+              if (categoryValue && juryDeliverableIds.has(categoryValue)) {
                 return true;
               }
-              const deliverableLabel = deliverableLabelById.get(doc.category);
+              if (isJuryCategory(categoryValue)) {
+                return true;
+              }
+              const deliverableLabel = categoryValue
+                ? deliverableLabelById.get(categoryValue)
+                : undefined;
               return isJuryCategory(deliverableLabel);
             });
+            if (filteredDocs.length === 0 && documents.length > 0) {
+              filteredDocs = documents;
+            }
             registerSemesterLookup(lookups, semester.semester_id, filteredDocs);
             registerSemesterLookup(lookups, semester.name, filteredDocs);
           });

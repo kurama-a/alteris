@@ -833,9 +833,9 @@ def _resolve_semester(promotion: Dict[str, Any], semester_id: str) -> Dict[str, 
     raise HTTPException(status_code=404, detail="Semestre introuvable pour cette promotion")
 
 
-def _build_storage_path(promotion_id: str, semester_id: str, document_id: str, extension: str) -> Path:
+def _build_storage_path(apprenti_id: str, semester_id: str, document_id: str, extension: str) -> Path:
     _ensure_storage()
-    target_dir = DOCUMENT_STORAGE / promotion_id / semester_id
+    target_dir = DOCUMENT_STORAGE / apprenti_id / semester_id
     target_dir.mkdir(parents=True, exist_ok=True)
     return target_dir / f"{document_id}{extension}"
 
@@ -875,8 +875,7 @@ async def create_journal_document(
 
     # Génère un nouvel identifiant pour le document et prépare le chemin de stockage
     document_id = ObjectId()
-    promotion_id = str(promotion["_id"])
-    file_path = _build_storage_path(promotion_id, semester_id, str(document_id), extension)
+    file_path = _build_storage_path(apprenti_id, semester_id, str(document_id), extension)
 
     # Écrit le fichier reçu sur le disque dans l'emplacement prévu
     # Utilise un write binaire et copie le flux pour éviter de charger tout le fichier en mémoire
@@ -888,7 +887,7 @@ async def create_journal_document(
         "_id": document_id,
         "apprentice_id": apprenti_id,
         "apprentice_name": _build_full_name(apprenti),
-        "promotion_id": promotion_id,
+        "promotion_id": str(promotion["_id"]),
         "semester_id": semester_id,
         "category": category,
         "file_name": original_name,
@@ -939,9 +938,8 @@ async def update_journal_document(
     if extension not in allowed_extensions:
         raise HTTPException(status_code=400, detail="Extension de fichier non autorisee pour ce type")
 
-    promotion_id = document.get("promotion_id")
     semester_id = document.get("semester_id")
-    file_path = _build_storage_path(promotion_id, semester_id, document_id, extension)
+    file_path = _build_storage_path(apprenti_id, semester_id, document_id, extension)
     # Écrit le nouveau fichier sur le disque (remplace l'ancien fichier)
     with file_path.open("wb") as buffer:
         shutil.copyfileobj(upload.file, buffer)

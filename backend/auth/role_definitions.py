@@ -29,6 +29,30 @@ ROLE_DEFINITIONS: Dict[str, RoleDefinition] = {
             "jury:read",
         ],
     },
+    "apprentie": {
+        "roles": ["Apprentis"],
+        "role_label": "Apprenti",
+        "perms": [
+            "journal:read:own",
+            "journal:create:own",
+            "doc:read",
+            "doc:create",
+            "meeting:schedule:own",
+            "jury:read",
+        ],
+    },
+    "alternant": {
+        "roles": ["Apprentis"],
+        "role_label": "Apprenti",
+        "perms": [
+            "journal:read:own",
+            "journal:create:own",
+            "doc:read",
+            "doc:create",
+            "meeting:schedule:own",
+            "jury:read",
+        ],
+    },
     "tuteur_pedagogique": {
         "roles": ["Tuteur pédagogique"],
         "role_label": "Tuteur pédagogique",
