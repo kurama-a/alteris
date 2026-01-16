@@ -390,6 +390,12 @@
   padding:8px 10px;
   font-size:14px;
 }
+
+.timeline-deliverable input.is-outside{
+  background:#f3f4f6;
+  color:#6b7280;
+  border-color:#e5e7eb;
+}
 .timeline-deliverable select.styled-select {
   border: 1px solid #d1d5db;
   border-radius: 8px;
@@ -485,6 +491,15 @@
   justify-content:space-between;
   font-size:13px;
   color:#1f2937;
+}
+
+.promotion-deliverables li.is-outside{
+  opacity:0.55;
+  color:#6b7280;
+}
+
+.promotion-deliverables li.is-outside .timeline-date{
+  color:#9ca3af;
 }
 
 .timeline-date{

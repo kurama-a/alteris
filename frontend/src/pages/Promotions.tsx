@@ -237,6 +237,27 @@ const formatDateRange = (start?: string | null, end?: string | null) => {
   return "Dates non renseignees";
 };
 
+const parseDateOnly = (value?: string | null) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  parsed.setHours(0, 0, 0, 0);
+  return parsed;
+};
+
+const isDeliverableOutsideSemester = (
+  dueDate?: string | null,
+  startDate?: string | null,
+  endDate?: string | null
+) => {
+  if (!dueDate) return false;
+  const due = parseDateOnly(dueDate);
+  const start = parseDateOnly(startDate);
+  const end = parseDateOnly(endDate);
+  if (!due || !start || !end) return false;
+  return due < start || due > end;
+};
+
 const buildSemesterActions = (dispatch: SemesterUpdateDispatcher) => ({
   addSemester: () => dispatch((current) => [...current, createEmptySemester()]),
   removeSemester: (semesterIndex: number) =>
@@ -421,6 +442,17 @@ function SemesterTimelineEditor({ semesters, actions, emptyLabel }: TimelineEdit
                     <input
                       type="date"
                       value={deliverable.dueDate}
+                      min={semester.startDate || undefined}
+                      max={semester.endDate || undefined}
+                      className={
+                        isDeliverableOutsideSemester(
+                          deliverable.dueDate,
+                          semester.startDate,
+                          semester.endDate
+                        )
+                          ? "is-outside"
+                          : undefined
+                      }
                       onChange={(event) =>
                         actions.updateDeliverableField(
                           semesterIndex,
@@ -1034,11 +1066,22 @@ export default function Promotions() {
                   const deliverableKey =
                     deliverable.deliverable_id ?? deliverable.title ?? "livrable";
                   const displayTitle = deliverable.title || "Livrable";
+                  const isOutside = isDeliverableOutsideSemester(
+                    deliverable.due_date,
+                    semester.start_date,
+                    semester.end_date
+                  );
                   return (
-                    <li key={`${semesterKey}-${deliverableKey}`}>
+                    <li
+                      key={`${semesterKey}-${deliverableKey}`}
+                      className={isOutside ? "is-outside" : undefined}
+                    >
                       <span>{displayTitle}</span>
                       {deliverable.due_date && (
-                        <span className="timeline-date">{deliverable.due_date}</span>
+                        <span className="timeline-date">
+                          {deliverable.due_date}
+                          {isOutside ? " • Hors semestre" : ""}
+                        </span>
                       )}
                     </li>
                   );
