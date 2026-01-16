@@ -9,6 +9,9 @@ Utiliser le meme mot de passe pour tous les comptes afin de simplifier la demo.
 
 Mot de passe commun: Demo1234!
 
+
+- Entreprise
+  - Nom: Alteris Labs
 - Coordinatrice
   - Nom: Clara Coordo
   - Email: coordo@alteris.demo
@@ -37,10 +40,6 @@ Mot de passe commun: Demo1234!
   - Nom: Ines Intervenant
   - Email: intervenant@alteris.demo
   - Role: intervenant
-- Entreprise
-  - Nom: Alteris Labs
-  - Email: contact@alteris.demo
-  - Role: entreprise
 
 ## Scenario pas a pas
 
