@@ -54,6 +54,10 @@ type SelectableApprentice = {
   email: string;
 };
 
+type AdminApprentisResponse = {
+  apprentis: SelectableApprentice[];
+};
+
 type AdminPromotion = {
   id: string;
   label?: string;
@@ -72,6 +76,13 @@ const DEFAULT_COMPETENCY_LEVELS: { value: CompetencyLevelValue; label: string }[
   { value: "acquis", label: "Acquis" },
   { value: "non_aborde", label: "Non aborde en entreprise" },
 ];
+
+const GLOBAL_ENTRETIEN_ROLES = new Set([
+  "admin",
+  "administrateur",
+  "coordinatrice",
+  "responsable_cursus",
+]);
 
 export default function Entretiens() {
   const { me, token } = useAuth();
@@ -101,6 +112,10 @@ export default function Entretiens() {
       ),
     [normalizedRoleSet]
   );
+  const canBrowseAllEntretiens = React.useMemo(
+    () => Array.from(normalizedRoleSet).some((role) => GLOBAL_ENTRETIEN_ROLES.has(role)),
+    [normalizedRoleSet]
+  );
   const selfApprenticeOption: SelectableApprentice | null = isApprentice
     ? {
         id: me.id,
@@ -121,6 +136,9 @@ export default function Entretiens() {
           Boolean(candidate.id && candidate.fullName && candidate.email)
       );
   }, [supervisedApprentices]);
+  const [globalApprentices, setGlobalApprentices] = React.useState<SelectableApprentice[]>([]);
+  const [isLoadingGlobalApprentices, setIsLoadingGlobalApprentices] = React.useState(false);
+  const [apprenticeListError, setApprenticeListError] = React.useState<string | null>(null);
   const availableApprentices = React.useMemo<SelectableApprentice[]>(() => {
     const map = new Map<string, SelectableApprentice>();
     if (selfApprenticeOption) {
@@ -129,10 +147,13 @@ export default function Entretiens() {
     supervisedOptions.forEach((apprentice) => {
       map.set(apprentice.id, apprentice);
     });
+    globalApprentices.forEach((apprentice) => {
+      map.set(apprentice.id, apprentice);
+    });
     return Array.from(map.values()).sort((a, b) =>
       a.fullName.localeCompare(b.fullName, "fr", { sensitivity: "base" })
     );
-  }, [selfApprenticeOption, supervisedOptions]);
+  }, [globalApprentices, selfApprenticeOption, supervisedOptions]);
 
   const [entretiens, setEntretiens] = React.useState<Entretien[]>([]);
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
@@ -203,8 +224,50 @@ export default function Entretiens() {
   const hasApprenticeSelection = availableApprentices.length > 0;
 
   React.useEffect(() => {
+    if (!canBrowseAllEntretiens || !token) {
+      setGlobalApprentices([]);
+      setApprenticeListError(null);
+      setIsLoadingGlobalApprentices(false);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingGlobalApprentices(true);
+    setApprenticeListError(null);
+    fetchJson<AdminApprentisResponse>(`${ADMIN_API_URL}/apprentis`, { token })
+      .then((payload) => {
+        if (cancelled) return;
+        const apprentices =
+          payload.apprentis
+            ?.map((user) => ({
+              id: user.id,
+              fullName: user.fullName || user.email || "Apprenti",
+              email: user.email,
+            }))
+            .filter((user): user is SelectableApprentice => Boolean(user.id)) ?? [];
+        setGlobalApprentices(apprentices);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setGlobalApprentices([]);
+        setApprenticeListError(
+          error instanceof Error
+            ? error.message
+            : "Impossible de recuperer la liste des apprentis."
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingGlobalApprentices(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canBrowseAllEntretiens, token]);
+
+  React.useEffect(() => {
     if (!availableApprentices.length) {
-      setSelectedApprenticeId(selfApprenticeOption?.id ?? null);
+      setSelectedApprenticeId(canBrowseAllEntretiens ? null : selfApprenticeOption?.id ?? null);
       return;
     }
     if (
@@ -213,8 +276,17 @@ export default function Entretiens() {
     ) {
       return;
     }
+    if (canBrowseAllEntretiens) {
+      setSelectedApprenticeId(null);
+      return;
+    }
     setSelectedApprenticeId(availableApprentices[0]?.id ?? selfApprenticeOption?.id ?? null);
-  }, [availableApprentices, selectedApprenticeId, selfApprenticeOption]);
+  }, [
+    availableApprentices,
+    canBrowseAllEntretiens,
+    selectedApprenticeId,
+    selfApprenticeOption,
+  ]);
 
   React.useEffect(() => {
     setIsFormVisible(false);
@@ -753,29 +825,49 @@ export default function Entretiens() {
             gap: 12,
           }}
         >
-        <label style={{ fontWeight: 600 }}>Apprenti suivi</label>
-        {availableApprentices.length ? (
-          <select
-            value={selectedApprenticeId ?? ""}
-            onChange={(event) => setSelectedApprenticeId(event.target.value || null)}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 8,
-              border: "1px solid #cbd5f5",
-              maxWidth: 360,
-            }}
-          >
-            {availableApprentices.map((apprentice) => (
-              <option key={apprentice.id} value={apprentice.id}>
-                {apprentice.fullName} — {apprentice.email}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <p style={{ margin: 0, color: "#475569" }}>
-            Aucun apprenti n'est rattaché à votre profil pour le moment.
-          </p>
-        )}
+          <label style={{ fontWeight: 600 }}>
+            {canBrowseAllEntretiens ? "Selectionnez un apprenti" : "Apprenti suivi"}
+          </label>
+          {availableApprentices.length ? (
+            <>
+              <select
+                value={selectedApprenticeId ?? ""}
+                onChange={(event) => setSelectedApprenticeId(event.target.value || null)}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #cbd5f5",
+                  maxWidth: 360,
+                }}
+              >
+                {canBrowseAllEntretiens ? (
+                  <option value="">
+                    {selectedApprenticeId ? "Choisissez un autre apprenti" : "Choisissez un apprenti"}
+                  </option>
+                ) : null}
+                {availableApprentices.map((apprentice) => (
+                  <option key={apprentice.id} value={apprentice.id}>
+                    {apprentice.fullName} - {apprentice.email}
+                  </option>
+                ))}
+              </select>
+              {canBrowseAllEntretiens ? (
+                <small style={{ color: "#64748b" }}>
+                  {isLoadingGlobalApprentices
+                    ? "Chargement de la liste complete des apprentis..."
+                    : apprenticeListError
+                    ? apprenticeListError
+                    : `Total : ${availableApprentices.length} apprentis`}
+                </small>
+              ) : null}
+            </>
+          ) : (
+            <p style={{ margin: 0, color: "#475569" }}>
+              {canBrowseAllEntretiens
+                ? "Aucun apprenti n'est disponible pour le moment."
+                : "Aucun apprenti n'est rattache a votre profil pour le moment."}
+            </p>
+          )}
         </div>
       )}
 
