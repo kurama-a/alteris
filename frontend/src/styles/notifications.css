@@ -1,0 +1,143 @@
+.notifications-page{
+  display:flex;
+  flex-direction:column;
+  gap:24px;
+}
+
+.notifications-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  background:#ffffff;
+  border:1px solid #e5e7eb;
+  border-radius:14px;
+  padding:20px;
+}
+
+.notifications-header h1{
+  margin:0;
+  font-size:22px;
+  color:#0f172a;
+}
+
+.notifications-header p{
+  margin-top:6px;
+  color:#475569;
+  font-size:14px;
+}
+
+.notifications-count{
+  background:#e0e7ff;
+  color:#3730a3;
+  font-size:12px;
+  font-weight:700;
+  padding:6px 12px;
+  border-radius:999px;
+  text-transform:uppercase;
+  letter-spacing:0.08em;
+}
+
+.notifications-error{
+  color:#b91c1c;
+  margin:0;
+}
+
+.notifications-loading{
+  margin:0;
+  color:#475569;
+}
+
+.notifications-empty{
+  border:1px dashed #cbd5f5;
+  background:#f8fafc;
+  border-radius:16px;
+  padding:28px;
+  text-align:center;
+  color:#475569;
+}
+
+.notifications-empty h2{
+  margin:0 0 8px;
+  color:#0f172a;
+}
+
+.notifications-list{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:16px;
+}
+
+.notification-card{
+  background:#ffffff;
+  border:1px solid #e5e7eb;
+  border-radius:14px;
+  padding:16px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  box-shadow:0 6px 16px rgba(15,23,42,0.06);
+}
+
+.notification-card h3{
+  margin:0;
+  font-size:16px;
+  color:#0f172a;
+}
+
+.notification-card p{
+  margin:0;
+  color:#475569;
+  font-size:14px;
+}
+
+.notification-meta{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+}
+
+.notification-type{
+  font-size:11px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:0.08em;
+  color:#1e293b;
+}
+
+.notification-date{
+  font-size:12px;
+  color:#94a3b8;
+}
+
+.notification-apprentice{
+  margin-top:auto;
+  font-size:12px;
+  font-weight:600;
+  color:#1f2937;
+}
+
+.notification-card.deadline{
+  border-color:#38bdf8;
+}
+
+.notification-card.overdue{
+  border-color:#f97316;
+  background:#fff7ed;
+}
+
+.notification-card.document{
+  border-color:#a855f7;
+  background:#faf5ff;
+}
+
+.notification-card.entretien{
+  border-color:#0ea5e9;
+  background:#f0f9ff;
+}
+
+.notification-card.jury{
+  border-color:#22c55e;
+  background:#f0fdf4;
+}

@@ -109,6 +109,55 @@
   gap: 2px;
 }
 
+.navbar-right-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.notification-bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: #eef2ff;
+  color: #4338ca;
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.notification-bell:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(67, 56, 202, 0.2);
+}
+
+.bell-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.bell-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.notification-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 2px solid #fff;
+}
+
 .user-name {
   font-size: 15px;
   font-weight: 600;

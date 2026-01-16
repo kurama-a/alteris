@@ -1,6 +1,7 @@
 import React from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth, useMe, useCan } from "../auth/Permissions";
+import { useNotifications } from "../notifications/useNotifications";
 import "../styles/Layout.css";
 import brandMark from "../assets/alteris_logo.png";
 
@@ -24,6 +25,7 @@ export default function Layout() {
   const canAdmin = useCan("user:manage");
   const location = useLocation();
   const navigate = useNavigate();
+  const { items: notificationItems } = useNotifications();
   const normalizedRoles = React.useMemo(() => {
     const values = new Set<string>();
     if (me.role) values.add(me.role.toLowerCase());
@@ -167,6 +169,32 @@ export default function Layout() {
         </nav>
 
         <div className="navbar-right">
+          <div className="navbar-right-top">
+            <Link to="/notifications" className="notification-bell" aria-label="Notifications">
+              <span className="bell-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path
+                    d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M9.5 19a2.5 2.5 0 0 0 5 0"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </span>
+              {notificationItems.length > 0 ? (
+                <span className="notification-badge">
+                  {notificationItems.length > 9 ? "9+" : notificationItems.length}
+                </span>
+              ) : null}
+            </Link>
+          </div>
           <div className="user-email">{me.email}</div>
           <div className="user-role">Rôle : {me.roleLabel}</div>
           <button type="button" className="logout-button" onClick={handleLogout}>
