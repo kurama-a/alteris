@@ -43,7 +43,7 @@ export default function Layout() {
     { to: "/accueil", label: "Accueil", visible: true, icon: "home" },
     { to: "/journal", label: "Journal", visible: canJournal, icon: "journal" },
     { to: "/entretiens", label: "Entretiens", visible: canMeetings, icon: "meetings" },
-    { to: "/juries", label: "Juries", visible: canJury, icon: "jury" },
+    { to: "/juries", label: "Jury", visible: canJury, icon: "jury" },
     { to: "/promotions", label: "Promotions", visible: canPromotions, icon: "promo" },
     { to: "/admin", label: "Admin", visible: canAdmin, icon: "admin" },
     { to: "/profil", label: "Profil", visible: canSeeProfile, icon: "profile" },

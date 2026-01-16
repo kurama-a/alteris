@@ -145,13 +145,13 @@ function formatMember(member: JuryMemberDetails): string {
   return fullName || member.email || member.user_id;
 }
 
-export default function Juries() {
+export default function Jury() {
   const { token } = useAuth();
   const me = useMe();
   const { fetchApprenticeDocuments: fetchDocumentsApi, getDownloadUrl } = useDocuments();
 
   const [juries, setJuries] = React.useState<JuryRecord[]>([]);
-  const [isLoadingJuries, setIsLoadingJuries] = React.useState(false);
+  const [isLoadingJury, setIsLoadingJury] = React.useState(false);
   const [juryError, setJuryError] = React.useState<string | null>(null);
 
   const [formDraft, setFormDraft] = React.useState<JuryFormState>(initialFormState);
@@ -414,7 +414,7 @@ export default function Juries() {
       setJuryError("Authentification requise pour charger les jurys.");
       return;
     }
-    setIsLoadingJuries(true);
+    setIsLoadingJury(true);
     setJuryError(null);
     try {
       const payload = await fetchJson<JuryRecord[]>(`${JURY_API_URL}/juries`, { token });
@@ -425,7 +425,7 @@ export default function Juries() {
       setJuryError(message);
       setJuries([]);
     } finally {
-      setIsLoadingJuries(false);
+      setIsLoadingJury(false);
     }
   }, [token]);
 
@@ -749,9 +749,9 @@ export default function Juries() {
   return (
     <section className="content" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <header>
-        <h1>Gestion des juries</h1>
+        <h1>Gestion des jurys</h1>
         <p>
-          Organisez les juries académiques et partagez les documents de présentation/rendu avec les
+          Organisez les jurys académiques et partagez les documents de présentation/rendu avec les
           membres concernés.
         </p>
       </header>
@@ -767,9 +767,9 @@ export default function Juries() {
           }}
         >
           <header style={{ marginBottom: 16 }}>
-            <h2 style={{ margin: 0 }}>Créer un jurie</h2>
+            <h2 style={{ margin: 0 }}>Créer un jury</h2>
             <p style={{ margin: "8px 0 0", color: "#475569" }}>
-              Renseignez la session souhaitée puis associez les membres du jurie.
+              Renseignez la session souhaitée puis associez les membres du jury.
             </p>
           </header>
           <form
@@ -947,7 +947,7 @@ export default function Juries() {
                   minWidth: 180,
                 }}
               >
-                {isCreatingJury ? "Création..." : "Enregistrer le jurie"}
+                {isCreatingJury ? "Création..." : "Enregistrer le jury"}
               </button>
             </div>
           </form>
@@ -972,9 +972,9 @@ export default function Juries() {
         >
           <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
             <div>
-              <h2 style={{ margin: 0 }}>Juries planifiés</h2>
+              <h2 style={{ margin: 0 }}>Jurys planifiés</h2>
               <p style={{ margin: "6px 0 0", color: "#475569" }}>
-                Consultez les juries auxquels vous êtes associé ou suivez l&apos;ensemble des sessions.
+                Consultez les jurys auxquels vous êtes associé ou suivez l&apos;ensemble des sessions.
               </p>
             </div>
             <button
@@ -1011,10 +1011,10 @@ export default function Juries() {
         </header>
         {juryError && <p style={{ color: "#b91c1c" }}>{juryError}</p>}
         {deleteError && <p style={{ color: "#b91c1c" }}>{deleteError}</p>}
-        {isLoadingJuries ? (
-          <p>Chargement des juries...</p>
+        {isLoadingJury ? (
+          <p>Chargement des jurys...</p>
         ) : juriesToDisplay.length === 0 ? (
-          <p>Aucun jurie à afficher pour le moment.</p>
+          <p>Aucun jury à afficher pour le moment.</p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {juriesToDisplay.map((jury) => {
